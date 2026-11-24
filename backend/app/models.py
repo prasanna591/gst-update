@@ -117,6 +117,8 @@ class ImportantDate(Base):
     kind = Column(String(20), nullable=False, default="Custom")   # Registration, Anniversary, Deadline, Custom
     event_date = Column(Date, nullable=False)
     repeat_yearly = Column(Boolean, nullable=False, default=True)
+    repeat_frequency = Column(String(20), nullable=False, default="Yearly")
+    repeat_interval = Column(Integer, nullable=True, default=7)
     client_id = Column(Integer, ForeignKey("clients.id"), nullable=True)
     notes = Column(Text, nullable=True)
 

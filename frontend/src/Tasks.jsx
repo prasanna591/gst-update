@@ -3,6 +3,7 @@ import {
   Plus, Pencil, Trash2, X, AlertTriangle, Star, CheckCircle2, CalendarClock,
 } from "lucide-react";
 import api from "./api";
+import DetailCard from "./DetailCard";
 
 const todayStr = () => new Date().toLocaleDateString("en-CA");
 const emptyForm = () => ({
@@ -33,6 +34,7 @@ export default function Tasks() {
   const [error, setError] = useState("");
   const [generating, setGenerating] = useState(false);
   const [notice, setNotice] = useState(null);
+  const [detail, setDetail] = useState(null);
   const set = (k, v) => setForm((x) => ({ ...x, [k]: v }));
 
   async function load() {
@@ -200,24 +202,17 @@ export default function Tasks() {
 
   return (
     <div className="page-content">
-      <header className="topbar">
-        <div>
-          <span className="crumb">Workspace / Tasks</span>
-          <h1>Tasks</h1>
-          <p>Your daily to-do list. Tick a task when it is done.</p>
-        </div>
-        <div className="topbar-actions">
-          <button
-            className="secondary-btn"
-            title="Create tasks for every service deadline"
-            disabled={generating}
-            onClick={generateDeadlines}
-          >
-            <CalendarClock size={17} /> {generating ? "Generating…" : "Generate deadlines"}
-          </button>
-          <button className="primary-btn" onClick={openNew}><Plus size={18} /> Add task</button>
-        </div>
-      </header>
+      <div className="page-actions-bar">
+        <button
+          className="secondary-btn"
+          title="Create tasks for every service deadline"
+          disabled={generating}
+          onClick={generateDeadlines}
+        >
+          <CalendarClock size={17} /> {generating ? "Generating…" : "Generate deadlines"}
+        </button>
+        <button className="primary-btn" onClick={openNew}><Plus size={18} /> Add task</button>
+      </div>
 
       <section className="stats-grid">
         {cards.map(({ label, value, note, icon: Icon, tone, card }) => (
@@ -257,13 +252,29 @@ export default function Tasks() {
               return (
                 <li
                   key={t.id}
-                  className={`dx-row ${t.priority === "High" && !t.is_done ? "high" : ""} ${late ? "late" : ""} ${t.is_done ? "done" : ""}`}
+                  className={`dx-row ${t.priority === "High" && !t.is_done ? "high" : ""} ${late ? "late" : ""} ${t.is_done ? "done" : ""} clickable-row`}
+                  onClick={() => setDetail({
+                    title: t.title || "—",
+                    subtitle: `${t.client_name || "No client"} · ${t.service_name || "No service"}`,
+                    rows: [
+                      ["Due date", t.due_date ? fmtDate(t.due_date) : "—"],
+                      ["Priority", t.priority || "—"],
+                      ["Status", t.is_done ? "Done" : "Open"],
+                      ["Client", t.client_name],
+                      ["Service", t.service_name],
+                      ["Repeat", t.recurrence && t.recurrence !== "None" ? t.recurrence : "—"],
+                      ["Repeat until", t.recurrence_end ? fmtDate(t.recurrence_end) : null],
+                      ["Task ID", t.id],
+                    ],
+                    note: t.notes,
+                  })}
                 >
                   <input
                     type="checkbox"
                     className="dx-check"
                     checked={t.is_done}
                     title={t.is_done ? "Mark as not done" : "Mark as done"}
+                    onClick={(e) => e.stopPropagation()}
                     onChange={() => toggle(t)}
                   />
                   <div className="dx-body">
@@ -277,7 +288,7 @@ export default function Tasks() {
                   </div>
                   {t.priority === "High" && !t.is_done && <span className="chip chip-amber">Important</span>}
                   {late && <span className="chip chip-red">Overdue</span>}
-                  <div className="dx-actions">
+                  <div className="dx-actions" onClick={(e) => e.stopPropagation()}>
                     <button className="icon-btn sm" title="Edit" onClick={() => openEdit(t)}><Pencil size={15} /></button>
                     <button className="icon-btn sm" title="Delete" onClick={() => remove(t)}><Trash2 size={15} /></button>
                   </div>
@@ -356,6 +367,8 @@ export default function Tasks() {
           {notice.text}
         </div>
       )}
+
+      <DetailCard detail={detail} onClose={() => setDetail(null)} />
     </div>
   );
 }

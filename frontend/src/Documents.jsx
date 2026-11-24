@@ -5,6 +5,7 @@ import {
   File as FileIcon, UploadCloud, Upload, HardDrive,
 } from "lucide-react";
 import api from "./api";
+import DetailCard from "./DetailCard";
 import { useAuth } from "./authContext";
 
 const CATEGORIES = [
@@ -80,6 +81,7 @@ export default function Documents() {
   const [dragging, setDragging] = useState(false);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState(null);
+  const [detail, setDetail] = useState(null);
 
   const notify = useCallback((type, message) => {
     setToast({ type, message });
@@ -242,18 +244,11 @@ export default function Documents() {
 
   return (
     <div className="page-content">
-      <header className="topbar">
-        <div>
-          <span className="crumb">Workspace / Documents</span>
-          <h1>Documents</h1>
-          <p>Store client files and link them to a filing period.</p>
-        </div>
-        <div className="topbar-actions">
-          <button className="primary-btn" onClick={openUpload}>
-            <Plus size={18} /> Upload document
-          </button>
-        </div>
-      </header>
+      <div className="page-actions-bar">
+        <button className="primary-btn" onClick={openUpload}>
+          <Plus size={18} /> Upload document
+        </button>
+      </div>
 
       <section className="stats-grid">
         {cards.map(({ label, value, note, icon: Icon, tone, card }) => (
@@ -346,7 +341,24 @@ export default function Documents() {
                     const { Icon, cls } = iconFor(d.original_filename);
                     const filing = d.filing_id ? filingById(d.filing_id) : null;
                     return (
-                      <tr key={d.id} className={d.category === "Notice" ? "row-late" : ""}>
+                      <tr
+                        key={d.id}
+                        className={`${d.category === "Notice" ? "row-late" : ""} clickable-row`}
+                        onClick={() => setDetail({
+                          title: d.title || d.original_filename || "—",
+                          subtitle: d.original_filename || "—",
+                          rows: [
+                            ["File name", d.original_filename],
+                            ["Client", clientById(d.client_id)?.client_name || "—"],
+                            ["Category", d.category || "—"],
+                            ["Filing", filing ? `${filing.return_type} · ${fmtPeriod(filing.period)}` : "—"],
+                            ["Size", fmtSize(d.size_bytes)],
+                            ["Uploaded", d.uploaded_at ? fmtDate(d.uploaded_at) : "—"],
+                            ["Uploaded by", d.uploaded_by_name],
+                            ["Document ID", d.id],
+                          ],
+                        })}
+                      >
                         <td>
                           <div className="client-cell">
                             <div className={`file-icon ${cls}`}><Icon size={18} /></div>
@@ -370,7 +382,7 @@ export default function Documents() {
                           {fmtDate(d.uploaded_at)}
                           <small>{d.uploaded_by_name || "—"}</small>
                         </td>
-                        <td>
+                        <td onClick={(e) => e.stopPropagation()}>
                           <div className="row-actions">
                             <button className="icon-btn sm" title="View" onClick={() => view(d)}>
                               <Eye size={15} />
@@ -504,6 +516,8 @@ export default function Documents() {
           {toast.message}
         </div>
       )}
+
+      <DetailCard detail={detail} onClose={() => setDetail(null)} />
     </div>
   );
 }

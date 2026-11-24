@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Plus, Briefcase, Pencil, Trash2, X } from "lucide-react";
 import api from "./api";
+import DetailCard from "./DetailCard";
 import "./App.css";
 
 export default function Services() {
@@ -9,6 +10,7 @@ export default function Services() {
   const [form, setForm] = useState({ name: "", frequency: "Monthly", due_day: 20 });
   const [editingId, setEditingId] = useState(null);
   const [error, setError] = useState("");
+  const [detail, setDetail] = useState(null);
 
   useEffect(() => {
     load();
@@ -63,16 +65,11 @@ export default function Services() {
 
   return (
     <div className="page-content">
-      <header className="topbar">
-        <div>
-          <span className="crumb">Workspace / Services</span>
-          <h1>Services</h1>
-          <p>Manage recurring client services and billing frequencies.</p>
-        </div>
+      <div className="page-actions-bar">
         <button className="primary-btn" onClick={() => { setEditingId(null); setForm({ name: "", frequency: "Monthly", due_day: 20 }); setError(""); }}>
           <Plus size={18} /> Add service
         </button>
-      </header>
+      </div>
 
       {error && <p role="alert">{error}</p>}
 
@@ -147,11 +144,24 @@ export default function Services() {
               </thead>
               <tbody>
                 {services.map((s) => (
-                  <tr key={s.id}>
+                  <tr
+                    key={s.id}
+                    className="clickable-row"
+                    onClick={() => setDetail({
+                      title: s.name || "—",
+                      subtitle: `Service ID: ${s.id}`,
+                      rows: [
+                        ["Name", s.name],
+                        ["Frequency", s.frequency || "—"],
+                        ["Due day", s.due_day ? `Day ${s.due_day}` : "—"],
+                        ["Status", s.is_active === false ? "Inactive" : "Active"],
+                      ],
+                    })}
+                  >
                     <td><strong>{s.name}</strong></td>
                     <td>{s.frequency}</td>
                     <td>{s.due_day}</td>
-                    <td>
+                    <td onClick={(e) => e.stopPropagation()}>
                       <div className="row-actions">
                         <button className="icon-btn sm" title="Edit" onClick={() => edit(s)}><Pencil size={15} /></button>
                         <button className="icon-btn sm danger" title="Delete" onClick={() => remove(s.id)}><Trash2 size={15} /></button>
@@ -164,6 +174,8 @@ export default function Services() {
           </div>
         )}
       </section>
+
+      <DetailCard detail={detail} onClose={() => setDetail(null)} />
     </div>
   );
 }

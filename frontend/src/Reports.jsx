@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { BarChart3, FileText, Clock, Users, Download, Loader2, Save, Trash2 } from "lucide-react";
 import api from "./api";
+import DetailCard from "./DetailCard";
 import "./App.css";
 
 const SECTIONS = [
@@ -50,6 +51,7 @@ export default function Reports() {
   const [templateName, setTemplateName] = useState("");
   const [selectedTemplate, setSelectedTemplate] = useState("");
   const [selectedColumns, setSelectedColumns] = useState([]);
+  const [detail, setDetail] = useState(null);
 
   useEffect(() => {
     api.get("/api/clients/")
@@ -215,10 +217,7 @@ export default function Reports() {
 
   return (
     <div className="page">
-      <div className="page-header">
-        <h1>Custom Reports</h1>
-        <p className="muted">Generate filtered reports for clients, filings, fees, tasks and documents.</p>
-      </div>
+      <p className="page-subtitle">Generate filtered reports for clients, filings, fees, tasks and documents.</p>
 
       {error && <div className="login-error" role="alert">{error}</div>}
 
@@ -350,7 +349,18 @@ export default function Reports() {
               </thead>
               <tbody>
                 {tableRows.map((row, i) => (
-                  <tr key={i}>
+                  <tr
+                    key={i}
+                    className="clickable-row"
+                    onClick={() => setDetail({
+                      title: row.title || row.client_name || row.name || `Record ${i + 1}`,
+                      subtitle: SECTIONS.find((s) => s.value === section)?.label || "Report",
+                      rows: visibleFields.map((name) => [
+                        name.replace(/_/g, " ").replace(/\b\w/g, (ch) => ch.toUpperCase()),
+                        formatValue(row[name]),
+                      ]),
+                    })}
+                  >
                     {visibleFields.map((name) => (
                       <td key={name}>{formatValue(row[name])}</td>
                     ))}
@@ -364,6 +374,8 @@ export default function Reports() {
       )}
 
       {loading && !error && <div className="muted">Generating report&hellip;</div>}
+
+      <DetailCard detail={detail} onClose={() => setDetail(null)} />
     </div>
   );
 }

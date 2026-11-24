@@ -4,6 +4,7 @@ import {
   ReceiptText, Mail, Printer,
 } from "lucide-react";
 import api from "./api";
+import DetailCard from "./DetailCard";
 
 const empty = { client_id: "", purpose: "", amount: "", due_date: "", expected_date: "", reference_person: "", notes: "" };
 const inr = (n) => "₹" + Number(n).toLocaleString("en-IN", { maximumFractionDigits: 2 });
@@ -31,6 +32,7 @@ export default function Fees() {
   const [loading, setLoading] = useState(true);
   const [invoiceNotice, setInvoiceNotice] = useState(null);
   const [selected, setSelected] = useState([]);
+  const [detail, setDetail] = useState(null);
   const set = (k, v) => setForm((x) => ({ ...x, [k]: v }));
 
   async function load() {
@@ -155,16 +157,9 @@ export default function Fees() {
 
   return (
     <div className="page-content">
-      <header className="topbar">
-        <div>
-          <span className="crumb">Workspace / Fees</span>
-          <h1>Fees collection</h1>
-          <p>Track what each client owes and tick a payment when it is received.</p>
-        </div>
-        <div className="topbar-actions">
-          <button className="primary-btn" onClick={openNew}><Plus size={18} /> Add fee</button>
-        </div>
-      </header>
+      <div className="page-actions-bar">
+        <button className="primary-btn" onClick={openNew}><Plus size={18} /> Add fee</button>
+      </div>
 
       <section className="stats-grid">
         {cards.map(({ label, value, note, icon: Icon, tone, card, red }) => (
@@ -216,9 +211,27 @@ export default function Fees() {
                   const due = dueText(f);
                   const late = f.status === "Pending" && daysFrom(f.due_date) < 0;
                   return (
-                    <tr key={f.id} className={late ? "row-late" : f.status === "Paid" ? "row-paid" : ""}>
-                      <td><input type="checkbox" checked={selected.includes(f.id)} onChange={() => toggleSelect(f.id)} title="Select fee" /></td>
-                      <td><input type="checkbox" className="task-check" checked={f.status === "Paid"} onChange={() => toggle(f)} title="Mark as paid" /></td>
+                    <tr
+                      key={f.id}
+                      className={`${late ? "row-late" : f.status === "Paid" ? "row-paid" : ""} clickable-row`}
+                      onClick={() => setDetail({
+                        title: f.purpose || "—",
+                        subtitle: f.client_name || "—",
+                        rows: [
+                          ["Client", f.client_name],
+                          ["Purpose", f.purpose],
+                          ["Amount", `₹${Number(f.amount || 0).toLocaleString("en-IN")}`],
+                          ["Status", f.status || "—"],
+                          ["Due date", fmt(f.due_date)],
+                          ["Expected date", fmt(f.expected_date)],
+                          ["Contact", f.reference_person],
+                          ["Fee ID", f.id],
+                        ],
+                        note: f.notes,
+                      })}
+                    >
+                      <td onClick={(e) => e.stopPropagation()}><input type="checkbox" checked={selected.includes(f.id)} onChange={() => toggleSelect(f.id)} title="Select fee" /></td>
+                      <td onClick={(e) => e.stopPropagation()}><input type="checkbox" className="task-check" checked={f.status === "Paid"} onChange={() => toggle(f)} title="Mark as paid" /></td>
                       <td>
                         <div className="person">
                           <div className={`avatar av-${f.client_id % 5}`}>{(f.client_name || "?").charAt(0).toUpperCase()}</div>
@@ -230,7 +243,7 @@ export default function Fees() {
                       <td>{fmt(f.due_date)}<span className={`due-note ${due.cls}`}>{due.text}</span></td>
                       <td>{fmt(f.expected_date)}</td>
                       <td>{f.reference_person || "—"}</td>
-                      <td>
+                      <td onClick={(e) => e.stopPropagation()}>
                         <div className="row-actions">
                           {f.invoice_id ? (
                             <button className="icon-btn sm" title="View invoice" onClick={() => viewInvoice(f.invoice_id)}>
@@ -343,6 +356,8 @@ export default function Fees() {
           </section>
         </div>
       )}
+
+      <DetailCard detail={detail} onClose={() => setDetail(null)} />
     </div>
   );
 }

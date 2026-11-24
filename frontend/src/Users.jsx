@@ -4,6 +4,7 @@ import {
   ShieldCheck, UserCheck, UserX, Ban, RotateCcw, Plus,
 } from "lucide-react";
 import api from "./api";
+import DetailCard from "./DetailCard";
 import { useAuth } from "./authContext";
 
 export default function UsersPage() {
@@ -21,6 +22,7 @@ export default function UsersPage() {
   const [newUser, setNewUser] = useState({ full_name: "", email: "", password: "", role: "Admin" });
   const [createError, setCreateError] = useState("");
   const [staffEnabled, setStaffEnabled] = useState(false);
+  const [detail, setDetail] = useState(null);
 
   async function load() {
     setLoading(true);
@@ -114,18 +116,11 @@ export default function UsersPage() {
 
   return (
     <div className="page-content">
-      <header className="topbar">
-        <div>
-          <span className="crumb">Workspace / Users</span>
-          <h1>User management</h1>
-          <p>Create accounts, reset passwords and enable or disable access.</p>
-        </div>
-        <div className="topbar-actions">
-          <button className="primary-btn" onClick={() => { setAddOpen(true); setCreateError(""); }}>
-            <Plus size={18} /> Add user
-          </button>
-        </div>
-      </header>
+      <div className="page-actions-bar">
+        <button className="primary-btn" onClick={() => { setAddOpen(true); setCreateError(""); }}>
+          <Plus size={18} /> Add user
+        </button>
+      </div>
 
       <section className="stats-grid">
         {cards.map(({ label, value, note, icon: Icon, tone, card }) => (
@@ -163,7 +158,21 @@ export default function UsersPage() {
                   {shown.map((u) => {
                     const mine = u.id === me?.id;
                     return (
-                      <tr key={u.id}>
+                      <tr
+                        key={u.id}
+                        className="clickable-row"
+                        onClick={() => setDetail({
+                          title: u.full_name || "—",
+                          subtitle: u.email || "—",
+                          rows: [
+                            ["Email", u.email],
+                            ["Role", u.role || "—"],
+                            ["Status", u.is_active ? "Active" : "Disabled"],
+                            ["Account ID", u.id],
+                            ["Current user", mine ? "Yes" : "No"],
+                          ],
+                        })}
+                      >
                         <td>
                           <div className="person">
                             <div className={`avatar av-${u.id % 5}`}>{(u.full_name || "?").charAt(0).toUpperCase()}</div>
@@ -175,7 +184,7 @@ export default function UsersPage() {
                         </td>
                         <td><span className={`pill ${u.role === "Admin" ? "pill-admin" : "pill-staff"}`}>{u.role}</span></td>
                         <td><span className={`badge ${u.is_active ? "badge-active" : "badge-inactive"}`}>{u.is_active ? "Active" : "Disabled"}</span></td>
-                        <td>
+                        <td onClick={(e) => e.stopPropagation()}>
                           <div className="row-actions">
                             <button className="text-btn" onClick={() => { setTarget(u); setPw(""); setModalError(""); }}>
                               <KeyRound size={14} /> Reset password
@@ -276,6 +285,8 @@ export default function UsersPage() {
           {toast.message}
         </div>
       )}
+
+      <DetailCard detail={detail} onClose={() => setDetail(null)} />
     </div>
   );
 }

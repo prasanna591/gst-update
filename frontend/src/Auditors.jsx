@@ -3,6 +3,7 @@ import {
   Plus, Search, Pencil, X, RefreshCw, UserCheck, CheckCircle2, AlertCircle,
 } from "lucide-react";
 import api from "./api";
+import DetailCard from "./DetailCard";
 
 const emptyForm = {
   name: "", firm_name: "", qualification: "", membership_no: "",
@@ -19,6 +20,7 @@ export default function Auditors() {
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState(null);
+  const [detail, setDetail] = useState(null);
 
   const notify = useCallback((type, message) => {
     setToast({ type, message });
@@ -110,18 +112,11 @@ export default function Auditors() {
 
   return (
     <div className="page-content">
-      <header className="topbar">
-        <div>
-          <span className="crumb">Workspace / Auditors</span>
-          <h1>Auditor management</h1>
-          <p>Keep auditor details and see who handles which clients.</p>
-        </div>
-        <div className="topbar-actions">
-          <button className="primary-btn" onClick={openAdd}>
-            <Plus size={18} /> Add auditor
-          </button>
-        </div>
-      </header>
+      <div className="page-actions-bar">
+        <button className="primary-btn" onClick={openAdd}>
+          <Plus size={18} /> Add auditor
+        </button>
+      </div>
 
       <section className="panel">
         <div className="panel-heading">
@@ -184,7 +179,24 @@ export default function Auditors() {
                 </thead>
                 <tbody>
                   {filtered.map((a) => (
-                    <tr key={a.id}>
+                    <tr
+                      key={a.id}
+                      className="clickable-row"
+                      onClick={() => setDetail({
+                        title: a.name || "—",
+                        subtitle: a.firm_name || "No firm",
+                        rows: [
+                          ["Firm", a.firm_name],
+                          ["Qualification", a.qualification],
+                          ["Membership no.", a.membership_no],
+                          ["Phone", a.phone],
+                          ["Email", a.email],
+                          ["Clients", clientCount(a.id)],
+                          ["Status", a.is_active ? "Active" : "Inactive"],
+                        ],
+                        note: a.notes,
+                      })}
+                    >
                       <td>
                         <div className="client-cell">
                           <div className={`avatar av-${a.id % 5}`}>
@@ -207,7 +219,7 @@ export default function Auditors() {
                           {a.is_active ? "Active" : "Inactive"}
                         </span>
                       </td>
-                      <td>
+                      <td onClick={(e) => e.stopPropagation()}>
                         <div className="row-actions">
                           <button className="icon-btn sm" title="Edit" onClick={() => openEdit(a)}>
                             <Pencil size={15} />
@@ -291,6 +303,8 @@ export default function Auditors() {
           {toast.message}
         </div>
       )}
+
+      <DetailCard detail={detail} onClose={() => setDetail(null)} />
     </div>
   );
 }

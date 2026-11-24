@@ -537,8 +537,8 @@ export default function App() {
                   </thead>
                   <tbody>
                     {filteredClients.map((client) => (
-                      <tr key={client.id}>
-                        <td>{user?.role === "Admin" && (
+                      <tr key={client.id} className="clickable-row" onClick={() => setViewClient(client)}>
+                        <td onClick={(e) => e.stopPropagation()}>{user?.role === "Admin" && (
                           <input type="checkbox" checked={selectedClients.includes(client.id)} onChange={() => toggleClientSelect(client.id)} title="Select client" />
                         )}</td>
                         <td>
@@ -547,7 +547,7 @@ export default function App() {
                               {(client.client_name || "?").charAt(0).toUpperCase()}
                             </div>
                             <div>
-                              <Link className="name-link" to={`/clients/${client.id}`}>
+                              <Link className="name-link" to={`/clients/${client.id}`} onClick={(e) => e.stopPropagation()}>
                                 <strong>{client.client_name}</strong>
                               </Link>
                               <small>ID: {client.id}</small>
@@ -575,7 +575,7 @@ export default function App() {
                             {client.is_active ? "Active" : "Inactive"}
                           </span>
                         </td>
-                        <td>
+                        <td onClick={(e) => e.stopPropagation()}>
                           <div className="row-actions">
                             <button className="icon-btn sm" title="View" onClick={() => setViewClient(client)}>
                               <Eye size={15} />

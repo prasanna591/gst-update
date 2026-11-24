@@ -1,9 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import {
-  ChevronLeft, ChevronRight, CalendarDays, FileText, IndianRupee, ListChecks, Gift,
+  ChevronLeft, ChevronRight, CalendarDays, FileText, IndianRupee, ListChecks, Gift, Plus, X,
 } from "lucide-react";
 import api from "./api";
+import DetailCard from "./DetailCard";
+
+const KINDS = ["Registration", "Anniversary", "Deadline", "Custom"];
 
 const TYPE_META = {
   Filing: { bg: "#dbeafe", color: "#1d4ed8", icon: FileText },
@@ -11,6 +14,10 @@ const TYPE_META = {
   Task: { bg: "#fef3c7", color: "#92400e", icon: ListChecks },
   Date: { bg: "#ede9fe", color: "#5b21b6", icon: Gift },
 };
+
+const emptyMark = (date) => ({
+  title: "", kind: "Custom", event_date: date, repeat_yearly: true, client_id: "", notes: "",
+});
 
 function isoDate(date) {
   const y = date.getFullYear();
@@ -76,26 +83,35 @@ export default function Calendar() {
     return { year: now.getFullYear(), month: now.getMonth() };
   });
   const [events, setEvents] = useState([]);
+  const [clients, setClients] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [reloadKey, setReloadKey] = useState(0);
+  const [form, setForm] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState("");
+  const [detail, setDetail] = useState(null);
 
   useEffect(() => {
     let live = true;
+    setLoading(true);
     Promise.all([
       api.get("/api/filings/"),
       api.get("/api/fees/"),
       api.get("/api/tasks/"),
       api.get("/api/reminders/dates"),
+      api.get("/api/clients/"),
     ])
-      .then(([f, fee, t, d]) => {
+      .then(([f, fee, t, d, c]) => {
         if (!live) return;
         setEvents(buildEvents(f.data, fee.data, t.data, d.data));
+        setClients(c.data);
         setError("");
       })
       .catch(() => { if (live) setError("Could not load calendar items."); })
       .finally(() => { if (live) setLoading(false); });
     return () => { live = false; };
-  }, []);
+  }, [reloadKey]);
 
   const monthPrefix = `${view.year}-${String(view.month + 1).padStart(2, "0")}`;
   const monthEvents = useMemo(
@@ -136,24 +152,51 @@ export default function Calendar() {
     setView({ year: now.getFullYear(), month: now.getMonth() });
   }
 
+  function openMark(date = today) {
+    setForm(emptyMark(date));
+    setFormError("");
+  }
+
+  function setMarkField(key, value) {
+    setForm((current) => ({ ...current, [key]: value }));
+  }
+
+  async function saveMark(event) {
+    event.preventDefault();
+    setFormError("");
+    setSaving(true);
+    const body = {
+      title: form.title.trim(),
+      kind: form.kind,
+      event_date: form.event_date,
+      repeat_yearly: form.repeat_yearly,
+      client_id: form.client_id ? Number(form.client_id) : null,
+      notes: form.notes.trim() || null,
+    };
+    try {
+      await api.post("/api/reminders/dates", body);
+      setForm(null);
+      setReloadKey((key) => key + 1);
+    } catch (err) {
+      const detail = err.response?.data?.detail;
+      setFormError(typeof detail === "string" ? detail : "Could not save the marking date.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   const label = new Date(view.year, view.month, 1).toLocaleDateString("en-IN", {
     month: "long", year: "numeric",
   });
 
   return (
     <div className="page-content">
-      <header className="topbar">
-        <div>
-          <span className="crumb">Workspace / Calendar</span>
-          <h1>Calendar</h1>
-          <p>Filings, fees, tasks and client dates in one place.</p>
-        </div>
-        <div className="topbar-actions">
-          <button className="secondary-btn" onClick={() => shift(-1)}><ChevronLeft size={16} /> Previous</button>
-          <button className="secondary-btn" onClick={goToday}>Today</button>
-          <button className="secondary-btn" onClick={() => shift(1)}>Next <ChevronRight size={16} /></button>
-        </div>
-      </header>
+      <div className="page-actions-bar">
+        <button className="primary-btn" onClick={() => openMark(today)}><Plus size={16} /> Add marking date</button>
+        <button className="secondary-btn" onClick={() => shift(-1)}><ChevronLeft size={16} /> Previous</button>
+        <button className="secondary-btn" onClick={goToday}>Today</button>
+        <button className="secondary-btn" onClick={() => shift(1)}>Next <ChevronRight size={16} /></button>
+      </div>
 
       {error && <div className="panel" style={{ marginBottom: 16 }}>{error}</div>}
 
@@ -173,7 +216,7 @@ export default function Calendar() {
         })}
       </section>
 
-      <section className="panel mt">
+      <section className="panel mt calendar-panel">
         <div className="panel-heading">
           <div>
             <h2>{label}</h2>
@@ -182,43 +225,42 @@ export default function Calendar() {
           <CalendarDays size={20} />
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 6, marginTop: 12 }}>
+        <div className="calendar-grid">
           {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => (
-            <div key={day} style={{ textAlign: "center", fontSize: 12, color: "#64748b", fontWeight: 700 }}>
-              {day}
-            </div>
+            <div key={day} className="calendar-weekday">{day}</div>
           ))}
 
           {cells.map((day, index) => {
-            if (!day) return <div key={`blank-${index}`} style={{ minHeight: 110 }} />;
+            if (!day) return <div key={`blank-${index}`} className="calendar-cell calendar-blank" />;
             const date = `${monthPrefix}-${String(day).padStart(2, "0")}`;
             const items = byDate.get(date) || [];
             return (
-              <div key={date} style={{
-                minHeight: 110,
-                border: "1px solid #e2e8f0",
-                borderRadius: 8,
-                padding: 8,
-                background: date === today ? "#eff6ff" : "#fff",
-              }}>
-                <strong style={{ fontSize: 12, color: date === today ? "#2563eb" : "#334155" }}>{day}</strong>
+              <div
+                key={date}
+                className={`calendar-cell ${date === today ? "calendar-today" : ""}`}
+                onClick={() => openMark(date)}
+                onKeyDown={(e) => { if (e.key === "Enter") openMark(date); }}
+                role="button"
+                tabIndex={0}
+                title="Click to add a marking date"
+              >
+                <strong className="calendar-day">{day}</strong>
                 {items.slice(0, 3).map((event, i) => {
                   const meta = TYPE_META[event.type];
                   return (
-                    <Link key={`${event.type}-${i}`} to={event.link}
+                    <Link
+                      key={`${event.type}-${i}`}
+                      to={event.link}
+                      className="calendar-event"
+                      style={{ background: meta.bg, color: meta.color }}
                       title={`${event.title} · ${event.subtitle}`}
-                      style={{
-                        display: "block", marginTop: 4, padding: "3px 6px", borderRadius: 6,
-                        background: meta.bg, color: meta.color, fontSize: 11,
-                        textDecoration: "none", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                      }}>
+                      onClick={(e) => e.stopPropagation()}
+                    >
                       {event.title}
                     </Link>
                   );
                 })}
-                {items.length > 3 && (
-                  <small style={{ display: "block", marginTop: 4, color: "#64748b" }}>+{items.length - 3} more</small>
-                )}
+                {items.length > 3 && <small className="calendar-more">+{items.length - 3} more</small>}
               </div>
             );
           })}
@@ -243,14 +285,27 @@ export default function Calendar() {
                 {monthEvents.map((event, i) => {
                   const meta = TYPE_META[event.type];
                   return (
-                    <tr key={`${event.date}-${event.type}-${i}`}>
+                    <tr
+                      key={`${event.date}-${event.type}-${i}`}
+                      className="clickable-row"
+                      onClick={() => setDetail({
+                        title: event.title || "—",
+                        subtitle: event.type || "—",
+                        rows: [
+                          ["Type", event.type],
+                          ["Date", event.date ? new Date(`${event.date}T00:00:00`).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : "—"],
+                          ["Details", event.subtitle],
+                          ["Open in", event.link],
+                        ],
+                      })}
+                    >
                       <td>{new Date(`${event.date}T00:00:00`).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}</td>
                       <td>
                         <span style={{ padding: "3px 8px", borderRadius: 999, background: meta.bg, color: meta.color, fontSize: 11 }}>
                           {event.type}
                         </span>
                       </td>
-                      <td><Link to={event.link}>{event.title}</Link></td>
+                      <td onClick={(e) => e.stopPropagation()}><Link to={event.link}>{event.title}</Link></td>
                       <td>{event.subtitle}</td>
                     </tr>
                   );
@@ -260,6 +315,74 @@ export default function Calendar() {
           </div>
         )}
       </section>
+
+      {form && (
+        <div className="modal-backdrop" onClick={() => setForm(null)}>
+          <section className="modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-heading">
+              <div>
+                <h2>Add marking date</h2>
+                <p>Mark a date that matters for your office or a client.</p>
+              </div>
+              <button className="icon-btn" onClick={() => setForm(null)} aria-label="Close"><X /></button>
+            </div>
+            <form onSubmit={saveMark}>
+              <div className="form-grid">
+                <label className="full-width">Title *
+                  <input
+                    required
+                    autoFocus
+                    value={form.title}
+                    onChange={(e) => setMarkField("title", e.target.value)}
+                    placeholder="e.g. Client anniversary"
+                  />
+                </label>
+                <label>Type
+                  <select value={form.kind} onChange={(e) => setMarkField("kind", e.target.value)}>
+                    {KINDS.map((kind) => <option key={kind}>{kind}</option>)}
+                  </select>
+                </label>
+                <label>Date *
+                  <input
+                    required
+                    type="date"
+                    value={form.event_date}
+                    onChange={(e) => setMarkField("event_date", e.target.value)}
+                  />
+                </label>
+                <label className="full-width">Client (optional)
+                  <select value={form.client_id} onChange={(e) => setMarkField("client_id", e.target.value)}>
+                    <option value="">No client</option>
+                    {clients.map((client) => (
+                      <option key={client.id} value={client.id}>{client.client_name}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="full-width">
+                  <span>
+                    <input
+                      type="checkbox"
+                      checked={form.repeat_yearly}
+                      onChange={(e) => setMarkField("repeat_yearly", e.target.checked)}
+                    />
+                    Repeat every year
+                  </span>
+                </label>
+                <label className="full-width">Notes
+                  <textarea rows="2" value={form.notes} onChange={(e) => setMarkField("notes", e.target.value)} />
+                </label>
+              </div>
+              {formError && <p role="alert" style={{ color: "#b91c1c" }}>{formError}</p>}
+              <div className="modal-actions">
+                <button type="button" className="secondary-btn" onClick={() => setForm(null)}>Cancel</button>
+                <button type="submit" className="primary-btn" disabled={saving}>{saving ? "Saving..." : "Save date"}</button>
+              </div>
+            </form>
+          </section>
+        </div>
+      )}
+
+      <DetailCard detail={detail} onClose={() => setDetail(null)} />
     </div>
   );
 }

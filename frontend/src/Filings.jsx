@@ -4,6 +4,7 @@ import {
   ListChecks, Clock, AlertTriangle, CalendarDays,
 } from "lucide-react";
 import api from "./api";
+import DetailCard from "./DetailCard";
 import { useAuth } from "./authContext";
 
 const RETURN_TYPES = ["GSTR-1", "GSTR-3B", "GSTR-9", "GSTR-9C", "CMP-08"];
@@ -88,6 +89,7 @@ export default function Filings() {
   const [dueTouched, setDueTouched] = useState(false);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState(null);
+  const [detail, setDetail] = useState(null);
 
   const notify = useCallback((type, message) => {
     setToast({ type, message });
@@ -241,18 +243,11 @@ export default function Filings() {
 
   return (
     <div className="page-content">
-      <header className="topbar">
-        <div>
-          <span className="crumb">Workspace / GST filings</span>
-          <h1>GST filings</h1>
-          <p>Track every return, its due date and its filing status.</p>
-        </div>
-        <div className="topbar-actions">
-          <button className="primary-btn" onClick={openAdd}>
-            <Plus size={18} /> Add filing
-          </button>
-        </div>
-      </header>
+      <div className="page-actions-bar">
+        <button className="primary-btn" onClick={openAdd}>
+          <Plus size={18} /> Add filing
+        </button>
+      </div>
 
       <section className="stats-grid">
         {statCards.map(({ label, value, note, icon: Icon, tone, card }) => (
@@ -358,7 +353,26 @@ export default function Filings() {
                     const c = clientById(f.client_id);
                     const state = getState(f);
                     return (
-                      <tr key={f.id}>
+                      <tr
+                        key={f.id}
+                        className="clickable-row"
+                        onClick={() => setDetail({
+                          title: f.return_type || "—",
+                          subtitle: c?.client_name || "Unknown client",
+                          rows: [
+                            ["Client", c?.client_name],
+                            ["Business", c?.business_name],
+                            ["Return type", f.return_type],
+                            ["Period", f.period ? fmtPeriod(f.period) : "—"],
+                            ["Due date", fmtDate(f.due_date)],
+                            ["Filed date", f.filed_date ? fmtDate(f.filed_date) : null],
+                            ["Status", state],
+                            ["ARN", f.arn],
+                            ["Filing ID", f.id],
+                          ],
+                          note: f.notes,
+                        })}
+                      >
                         <td>
                           <div className="client-cell">
                             <div className={`avatar av-${f.client_id % 5}`}>
@@ -378,7 +392,7 @@ export default function Filings() {
                         </td>
                         <td><span className={`badge ${BADGE[state]}`}>{state}</span></td>
                         <td className="mono">{f.arn || "—"}</td>
-                        <td>
+                        <td onClick={(e) => e.stopPropagation()}>
                           <div className="row-actions">
                             {state !== "Filed" && (
                               <button className="icon-btn sm" title="Mark as filed" onClick={() => markFiled(f)}>
@@ -510,6 +524,8 @@ export default function Filings() {
           {toast.message}
         </div>
       )}
+
+      <DetailCard detail={detail} onClose={() => setDetail(null)} />
     </div>
   );
 }

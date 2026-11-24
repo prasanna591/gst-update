@@ -1,8 +1,9 @@
-from datetime import date
+import calendar
+from datetime import date, timedelta
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from sqlalchemy.orm import Session
 
 from app.auth import get_db
@@ -17,11 +18,54 @@ class DateIn(BaseModel):
     kind: Literal["Registration", "Anniversary", "Deadline", "Custom"] = "Custom"
     event_date: date
     repeat_yearly: bool = True
+    repeat_frequency: Literal["None", "Every N days", "Monthly", "Yearly"] | None = None
+    repeat_interval: int | None = Field(default=7, ge=1, le=3650)
     client_id: int | None = None
     notes: str | None = None
 
+    @model_validator(mode="after")
+    def normalize_repeat(self):
+        if self.repeat_frequency is None:
+            self.repeat_frequency = "Yearly" if self.repeat_yearly else "None"
+        if self.repeat_frequency == "Every N days" and not self.repeat_interval:
+            raise ValueError("Repeat interval is required")
+        if self.repeat_frequency != "Every N days":
+            self.repeat_interval = None
+        self.repeat_yearly = self.repeat_frequency == "Yearly"
+        return self
 
-def next_occurrence(d: date, today: date) -> date:
+
+def next_occurrence(
+    d: date,
+    today: date,
+    frequency: str = "Yearly",
+    interval: int | None = None,
+) -> date:
+    if frequency == "None":
+        return d
+
+    if frequency == "Every N days":
+        step = max(1, interval or 7)
+        elapsed = (today - d).days
+        if elapsed <= 0:
+            return d
+        cycles = (elapsed + step - 1) // step
+        return d + timedelta(days=cycles * step)
+
+    if frequency == "Monthly":
+        def on_month(year: int, month: int) -> date:
+            return date(year, month, min(d.day, calendar.monthrange(year, month)[1]))
+
+        year, month = today.year, today.month
+        candidate = on_month(year, month)
+        if candidate < today:
+            month += 1
+            if month > 12:
+                month = 1
+                year += 1
+            candidate = on_month(year, month)
+        return candidate
+
     def on_year(y):
         try:
             return d.replace(year=y)
@@ -38,15 +82,19 @@ def date_items(db: Session, today: date):
         items.append({"key": f"b{c.id}", "id": None, "source": "birthday", "kind": "Birthday",
                       "title": f"{c.client_name}'s birthday", "date": n,
                       "days": (n - today).days, "client_name": c.client_name,
-                      "repeat_yearly": True, "notes": None, "client_id": c.id,
-                      "event_date": c.date_of_birth})
+                      "repeat_yearly": True, "repeat_frequency": "Yearly", "repeat_interval": None,
+                      "notes": None, "client_id": c.id, "event_date": c.date_of_birth})
     rows = (db.query(ImportantDate, Client.client_name)
               .outerjoin(Client, Client.id == ImportantDate.client_id).all())
     for d, cname in rows:
-        n = next_occurrence(d.event_date, today) if d.repeat_yearly else d.event_date
+        frequency = d.repeat_frequency or ("Yearly" if d.repeat_yearly else "None")
+        interval = d.repeat_interval or 7
+        n = next_occurrence(d.event_date, today, frequency, interval)
         items.append({"key": f"d{d.id}", "id": d.id, "source": "custom", "kind": d.kind,
                       "title": d.title, "date": n, "days": (n - today).days,
-                      "client_name": cname, "repeat_yearly": d.repeat_yearly,
+                      "client_name": cname, "repeat_yearly": frequency == "Yearly",
+                      "repeat_frequency": frequency,
+                      "repeat_interval": interval if frequency == "Every N days" else None,
                       "notes": d.notes, "client_id": d.client_id, "event_date": d.event_date})
     return sorted(items, key=lambda x: x["days"])
 

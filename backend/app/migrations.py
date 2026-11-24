@@ -20,6 +20,10 @@ _COLUMNS = {
         "recurrence": ("VARCHAR(12) NOT NULL DEFAULT 'None'", "VARCHAR(12) NOT NULL DEFAULT 'None'"),
         "recurrence_end": ("DATE", "DATE"),
     },
+    "important_dates": {
+        "repeat_frequency": ("VARCHAR(20) NOT NULL DEFAULT 'Yearly'", "VARCHAR(20) NOT NULL DEFAULT 'Yearly'"),
+        "repeat_interval": ("INTEGER DEFAULT 7", "INTEGER DEFAULT 7"),
+    },
 }
 
 
@@ -42,3 +46,13 @@ def ensure_columns(engine: Engine):
                     f"ALTER TABLE {quote(table_name)} "
                     f"ADD COLUMN {quote(column_name)} {column_type}"
                 ))
+
+        if "important_dates" in tables:
+            table = quote("important_dates")
+            flag = quote("repeat_yearly")
+            frequency = quote("repeat_frequency")
+            connection.execute(text(
+                f"UPDATE {table} SET {frequency} = "
+                f"CASE WHEN {flag} = 1 THEN 'Yearly' ELSE 'None' END "
+                f"WHERE {frequency} = 'Yearly'"
+            ))
