@@ -7,6 +7,7 @@ import {
 import api from "./api";
 import DetailCard from "./DetailCard";
 import { useAuth } from "./authContext";
+import { useConfirm } from "./confirmContext";
 
 const RETURN_TYPES = ["GSTR-1", "GSTR-3B", "GSTR-9", "GSTR-9C", "CMP-08"];
 const DUE_DAY = { "GSTR-1": 11, "GSTR-3B": 20, "CMP-08": 18 };
@@ -77,6 +78,7 @@ const BADGE = {
 
 export default function Filings() {
   const { user } = useAuth();
+  const askConfirm = useConfirm();
   const [searchParams] = useSearchParams();
   const requestedStatus = searchParams.get("status");
   const [filings, setFilings] = useState([]);
@@ -214,7 +216,12 @@ export default function Filings() {
   }
 
   async function removeFiling(f) {
-    if (!window.confirm("Delete this filing? This cannot be undone.")) return;
+    const ok = await askConfirm({
+      title: "Delete filing?",
+      message: `${f.return_type || "This filing"} for ${f.period || "the selected period"} will be deleted. This cannot be undone.`,
+      confirmLabel: "Delete",
+    });
+    if (!ok) return;
     try {
       await api.delete(`/api/filings/${f.id}`);
       notify("success", "Filing deleted.");

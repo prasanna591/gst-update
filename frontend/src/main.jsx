@@ -5,13 +5,16 @@ import './index.css'
 import './Polish.css'
 import Root from './Root.jsx'
 import { AuthProvider } from './AuthProvider.jsx'
+import { ConfirmProvider } from './ConfirmProvider.jsx'
 
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
     <HashRouter>
       <AuthProvider>
-        <Root />
+        <ConfirmProvider>
+          <Root />
+        </ConfirmProvider>
       </AuthProvider>
     </HashRouter>
   </StrictMode>,

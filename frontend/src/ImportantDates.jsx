@@ -6,6 +6,7 @@ import {
 } from "lucide-react";
 import api from "./api";
 import DetailCard from "./DetailCard";
+import { useConfirm } from "./confirmContext";
 
 const KINDS = ["Registration", "Anniversary", "Deadline", "Custom"];
 const REPEAT_FREQUENCIES = ["None", "Every N days", "Monthly", "Yearly"];
@@ -32,6 +33,7 @@ function when(days) {
 }
 
 export default function ImportantDates() {
+  const askConfirm = useConfirm();
   const [searchParams] = useSearchParams();
   const requestedRange = searchParams.get("range");
   const [items, setItems] = useState([]);
@@ -95,7 +97,12 @@ export default function ImportantDates() {
     }
   }
   const remove = async (i) => {
-    if (!window.confirm(`Delete "${i.title}"?`)) return;
+    const ok = await askConfirm({
+      title: "Delete important date?",
+      message: `"${i.title}" will be deleted.`,
+      confirmLabel: "Delete",
+    });
+    if (!ok) return;
     try {
       await api.delete(`/api/reminders/dates/${i.id}`);
       load();

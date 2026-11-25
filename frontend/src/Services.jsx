@@ -2,9 +2,11 @@ import { useState, useEffect } from "react";
 import { Plus, Briefcase, Pencil, Trash2, X } from "lucide-react";
 import api from "./api";
 import DetailCard from "./DetailCard";
+import { useConfirm } from "./confirmContext";
 import "./App.css";
 
 export default function Services() {
+  const askConfirm = useConfirm();
   const [services, setServices] = useState([]);
   const [loading, setLoading] = useState(true);
   const [form, setForm] = useState({ name: "", frequency: "Monthly", due_day: 20 });
@@ -54,7 +56,12 @@ export default function Services() {
   }
 
   async function remove(id) {
-    if (!window.confirm("Delete this service? Clients linked to it will lose the assignment.")) return;
+    const ok = await askConfirm({
+      title: "Delete service?",
+      message: "Clients linked to this service will lose the assignment.",
+      confirmLabel: "Delete",
+    });
+    if (!ok) return;
     try {
       await api.delete(`/api/services/${id}`);
       await load();

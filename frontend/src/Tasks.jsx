@@ -5,6 +5,7 @@ import {
 } from "lucide-react";
 import api from "./api";
 import DetailCard from "./DetailCard";
+import { useConfirm } from "./confirmContext";
 
 const todayStr = () => new Date().toLocaleDateString("en-CA");
 const emptyForm = () => ({
@@ -32,6 +33,7 @@ function addDays(s, n) {
 }
 
 export default function Tasks() {
+  const askConfirm = useConfirm();
   const [searchParams] = useSearchParams();
   const requestedView = searchParams.get("view");
   const [tasks, setTasks] = useState([]);
@@ -228,7 +230,12 @@ export default function Tasks() {
   }
 
   async function remove(t) {
-    if (!window.confirm(`Delete "${t.title}"?`)) return;
+    const ok = await askConfirm({
+      title: "Delete task?",
+      message: `"${t.title}" will be deleted.`,
+      confirmLabel: "Delete",
+    });
+    if (!ok) return;
     try {
       await api.delete(`/api/tasks/${t.id}`);
       load();

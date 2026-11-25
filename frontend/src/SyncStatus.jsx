@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import api from "./api";
+import { useConfirm } from "./confirmContext";
 
 export default function SyncStatus() {
+  const askConfirm = useConfirm();
   const [s, setS] = useState(null);
   const [error, setError] = useState("");
   const first = useRef(null);
@@ -18,8 +20,15 @@ export default function SyncStatus() {
   useEffect(() => { load(); const id = setInterval(load, 20000); return () => clearInterval(id); }, []);
 
   async function resolve(keep) {
-    if (keep === "drive" && !window.confirm("Replace the data on this laptop with the Google Drive data?")) return;
-    if (keep === "local" && !window.confirm("Replace the Google Drive data with the data on this laptop?")) return;
+    const ok = await askConfirm({
+      title: "Resolve sync conflict?",
+      message: keep === "drive"
+        ? "The data on this laptop will be replaced with the Google Drive data."
+        : "The Google Drive data will be replaced with the data on this laptop.",
+      confirmLabel: keep === "drive" ? "Use Google data" : "Keep laptop data",
+      tone: "default",
+    });
+    if (!ok) return;
     try {
       const r = await api.post("/api/sync/resolve", { keep });
       if (r.data?.status === "error") {

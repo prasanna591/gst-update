@@ -7,6 +7,7 @@ import {
 import api, { apiErrorMessage } from "./api";
 import DetailCard from "./DetailCard";
 import { useAuth } from "./authContext";
+import { useConfirm } from "./confirmContext";
 
 const CATEGORIES = [
   "GST Return", "Invoice", "Registration", "Notice", "Bank Statement", "Other",
@@ -65,6 +66,7 @@ function isThisMonth(s) {
 
 export default function Documents() {
   const { user } = useAuth();
+  const askConfirm = useConfirm();
   const fileInput = useRef(null);
 
   const [docs, setDocs] = useState([]);
@@ -233,7 +235,12 @@ export default function Documents() {
   }
 
   async function remove(doc) {
-    if (!window.confirm(`Delete "${doc.title}"? This cannot be undone.`)) return;
+    const ok = await askConfirm({
+      title: "Delete document?",
+      message: `"${doc.title}" will be deleted. This cannot be undone.`,
+      confirmLabel: "Delete",
+    });
+    if (!ok) return;
     try {
       await api.delete(`/api/documents/${doc.id}`);
       notify("success", "Document deleted.");

@@ -20,6 +20,7 @@ import Services from "./Services";
 import Reports from "./Reports";
 import Calendar from "./Calendar";
 import { useAuth } from "./authContext";
+import { useConfirm } from "./confirmContext";
 import {
   Users, Search, Plus, LayoutDashboard, FileText, CalendarDays, IndianRupee, ListChecks, Gift, ReceiptText,
   Settings, RefreshCw, X, Pencil, Eye, CheckCircle2, AlertCircle, UserCheck, LogOut, ShieldCheck, Menu,
@@ -42,6 +43,7 @@ export default function App() {
   const { pathname } = useLocation();
   const navigate = useNavigate();
   const { user, logout } = useAuth();
+  const askConfirm = useConfirm();
   const [menuOpen, setMenuOpen] = useState(false);
   const [logoutConfirm, setLogoutConfirm] = useState(false);
 
@@ -240,7 +242,12 @@ export default function App() {
   }
 
   async function deactivateClient(client) {
-    if (!window.confirm(`Deactivate ${client.client_name}? Their history will be kept.`)) return;
+    const ok = await askConfirm({
+      title: "Deactivate client?",
+      message: `${client.client_name} will be deactivated. Their history will be kept.`,
+      confirmLabel: "Deactivate",
+    });
+    if (!ok) return;
     try {
       await api.delete(`/api/clients/${client.id}`);
       notify("success", "Client deactivated.");
@@ -277,7 +284,14 @@ export default function App() {
 
   async function bulkClientAction(active) {
     if (!selectedClients.length) return;
-    if (!active && !window.confirm(`Deactivate ${selectedClients.length} client${selectedClients.length === 1 ? "" : "s"}? Their history will be kept.`)) return;
+    if (!active) {
+      const ok = await askConfirm({
+        title: "Deactivate clients?",
+        message: `${selectedClients.length} client${selectedClients.length === 1 ? "" : "s"} will be deactivated. Their history will be kept.`,
+        confirmLabel: "Deactivate",
+      });
+      if (!ok) return;
+    }
     try {
       await api.post("/api/clients/bulk/active", { ids: selectedClients, active });
       setSelectedClients([]);

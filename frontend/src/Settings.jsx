@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Eye, EyeOff, CheckCircle2, AlertCircle, Cloud, CloudOff, CloudUpload, RefreshCw, ShieldCheck, FileText, Save, Trash2, Star, BellRing, Monitor, Volume2, RotateCcw, Send } from "lucide-react";
 import api from "./api";
 import { useAuth } from "./authContext";
+import { useConfirm } from "./confirmContext";
 import { loadNotificationPrefs, resetNotificationPrefs, saveNotificationPrefs } from "./notificationPrefs";
 
 export default function SettingsPage() {
@@ -268,6 +269,7 @@ function AlertPreferencesSection({ notify, userId }) {
 }
 
 function DriveSection({ notify }) {
+  const askConfirm = useConfirm();
   const [st, setSt] = useState(null);
   const [loadError, setLoadError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -314,6 +316,15 @@ function DriveSection({ notify }) {
       const d = e.response?.data?.detail;
       notify("error", typeof d === "string" ? d : e.message || "Failed. Please try again.");
     } finally { setBusy(false); }
+  }
+
+  async function disconnectGoogle() {
+    const ok = await askConfirm({
+      title: "Disconnect Google?",
+      message: "Syncing with this Google account will stop. Existing local data will be kept.",
+      confirmLabel: "Disconnect",
+    });
+    if (ok) await act(() => api.post("/api/sync/disconnect"), "Disconnected.");
   }
 
   function connect() {
@@ -440,9 +451,7 @@ function DriveSection({ notify }) {
                 onClick={() => act(() => api.post("/api/sync/now"), "Sync finished.")}>
                 <RefreshCw size={16} /> Sync now
               </button>
-              <button className="secondary-btn" disabled={busy}
-                onClick={() => window.confirm("Stop syncing with this Google account?")
-                  && act(() => api.post("/api/sync/disconnect"), "Disconnected.")}>
+              <button className="secondary-btn" disabled={busy} onClick={disconnectGoogle}>
                 Disconnect
               </button>
             </div>
@@ -468,6 +477,7 @@ function DriveSection({ notify }) {
 }
 
 function InvoiceTemplateSection({ notify }) {
+  const askConfirm = useConfirm();
   const [templates, setTemplates] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
   const [name, setName] = useState("");
@@ -577,7 +587,13 @@ function InvoiceTemplateSection({ notify }) {
   }
 
   async function remove() {
-    if (!selectedId || !window.confirm("Delete this invoice template?")) return;
+    if (!selectedId) return;
+    const ok = await askConfirm({
+      title: "Delete invoice template?",
+      message: "This invoice template will be removed.",
+      confirmLabel: "Delete",
+    });
+    if (!ok) return;
     setBusy(true);
     try {
       await api.delete(`/api/invoices/templates/${selectedId}`);
@@ -738,6 +754,7 @@ function InvoiceTemplateSection({ notify }) {
 }
 
 function NotificationRulesSection({ notify }) {
+  const askConfirm = useConfirm();
   const [rules, setRules] = useState([]);
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -787,7 +804,13 @@ function NotificationRulesSection({ notify }) {
   }
 
   async function reset() {
-    if (!window.confirm("Restore the default notification reminder rules?")) return;
+    const ok = await askConfirm({
+      title: "Restore default rules?",
+      message: "Your custom reminder times and settings will be replaced with the defaults.",
+      confirmLabel: "Restore",
+      tone: "default",
+    });
+    if (!ok) return;
     setBusy(true);
     try {
       const result = await api.post("/api/notifications/rules/reset");
