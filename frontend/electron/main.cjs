@@ -1,18 +1,21 @@
 const { app, BrowserWindow, dialog, ipcMain, Notification, shell } = require("electron");
 const path = require("path");
 const { spawn } = require("child_process");
+const fs = require("fs");
 const http = require("http");
 
 let mainWindow;
 let backendProcess;
+let backendLogStream;
 let quitting = false;
 
 const isDev = !app.isPackaged;
 const projectRoot = path.resolve(__dirname, "../..");
 const HEALTH_URL = "http://127.0.0.1:8077/api/health";
+const devPython = path.join(projectRoot, "venv_build", "Scripts", "python.exe");
 const BACKEND = isDev
   ? {
-      command: path.join(projectRoot, "venv_build", "Scripts", "python.exe"),
+      command: fs.existsSync(devPython) ? devPython : "python",
       args: ["run_server.py"],
       cwd: path.join(projectRoot, "backend"),
     }
@@ -86,10 +89,22 @@ function backendMatches(data) {
   }
 }
 
+function ensureBackendLog() {
+  if (!backendLogStream || backendLogStream.destroyed) {
+    backendLogStream = fs.createWriteStream(
+      path.join(app.getPath("userData"), "backend.log"),
+      { flags: "a" }
+    );
+  }
+  return backendLogStream;
+}
+
 function startBackend() {
+  const log = ensureBackendLog();
+  log.write(`\n[${new Date().toISOString()}] Starting backend\n`);
   const child = spawn(BACKEND.command, BACKEND.args, {
     cwd: BACKEND.cwd,
-    stdio: isDev ? "inherit" : "ignore",
+    stdio: isDev ? "inherit" : ["ignore", log, log],
     windowsHide: true,
   });
   backendProcess = child;
@@ -101,7 +116,9 @@ function startBackend() {
   child.on("exit", (code) => {
     if (backendProcess === child) backendProcess = undefined;
     if (!quitting) {
-      console.error(`Backend exited unexpectedly with code ${code}`);
+      const message = `[${new Date().toISOString()}] Backend exited unexpectedly with code ${code}`;
+      console.error(message);
+      ensureBackendLog().write(`${message}\n`);
       setTimeout(async () => {
         const probe = await probeBackend();
         if (!quitting && !probe.alive) startBackend();
@@ -236,6 +253,7 @@ app.on("before-quit", () => {
   if (backendProcess && backendProcess.exitCode === null) {
     backendProcess.kill();
   }
+  if (backendLogStream) backendLogStream.end();
 });
 
 app.on("window-all-closed", () => {

@@ -9,7 +9,7 @@ export default function Services() {
   const askConfirm = useConfirm();
   const [services, setServices] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [form, setForm] = useState({ name: "", frequency: "Monthly", due_day: 20 });
+  const [form, setForm] = useState({ name: "", frequency: "Monthly", due_day: 20, due_month: "", is_active: true });
   const [editingId, setEditingId] = useState(null);
   const [error, setError] = useState("");
   const [detail, setDetail] = useState(null);
@@ -36,12 +36,16 @@ export default function Services() {
       setError("Service name is required.");
       return;
     }
+    const payload = {
+      ...form,
+      due_month: form.due_month === "" ? null : Number(form.due_month),
+    };
     const req = editingId
-      ? api.put(`/api/services/${editingId}`, form)
-      : api.post("/api/services/", form);
+      ? api.put(`/api/services/${editingId}`, payload)
+      : api.post("/api/services/", payload);
     try {
       await req;
-      setForm({ name: "", frequency: "Monthly", due_day: 20 });
+      setForm({ name: "", frequency: "Monthly", due_day: 20, due_month: "", is_active: true });
       setEditingId(null);
       await load();
     } catch {
@@ -51,7 +55,7 @@ export default function Services() {
 
   function edit(s) {
     setEditingId(s.id);
-    setForm({ name: s.name, frequency: s.frequency || "Monthly", due_day: s.due_day || 20 });
+    setForm({ name: s.name, frequency: s.frequency || "Monthly", due_day: s.due_day || 20, due_month: s.due_month ?? "", is_active: s.is_active !== false });
     setError("");
   }
 
@@ -73,7 +77,7 @@ export default function Services() {
   return (
     <div className="page-content">
       <div className="page-actions-bar">
-        <button className="primary-btn" onClick={() => { setEditingId(null); setForm({ name: "", frequency: "Monthly", due_day: 20 }); setError(""); }}>
+        <button className="primary-btn" onClick={() => { setEditingId(null); setForm({ name: "", frequency: "Monthly", due_day: 20, due_month: "", is_active: true }); setError(""); }}>
           <Plus size={18} /> Add service
         </button>
       </div>
@@ -87,7 +91,7 @@ export default function Services() {
             <p>Set the service name, billing frequency and due day.</p>
           </div>
           {!editingId && (
-            <button className="icon-btn" title="Cancel" onClick={() => setForm({ name: "", frequency: "Monthly", due_day: 20 })}>
+            <button className="icon-btn" title="Cancel" onClick={() => setForm({ name: "", frequency: "Monthly", due_day: 20, due_month: "", is_active: true })}>
               <X size={18} />
             </button>
           )}
@@ -111,9 +115,22 @@ export default function Services() {
             Due day (1–28)
             <input type="number" min="1" max="28" value={form.due_day || 20} onChange={(e) => setForm({ ...form, due_day: Number(e.target.value) || 20 })} />
           </label>
+          <label>
+            Due month (optional)
+            <select value={form.due_month} onChange={(e) => setForm({ ...form, due_month: e.target.value })}>
+              <option value="">Any month</option>
+              {Array.from({ length: 12 }, (_, index) => index + 1).map((month) => (
+                <option key={month} value={month}>{new Date(2000, month - 1, 1).toLocaleString("en", { month: "long" })}</option>
+              ))}
+            </select>
+          </label>
+          <label className="checkbox-field">
+            <input type="checkbox" checked={form.is_active} onChange={(e) => setForm({ ...form, is_active: e.target.checked })} />
+            <span><strong>Active</strong><small>Include this service in new assignments.</small></span>
+          </label>
           <div className="full-width">
             <button type="submit" className="primary-btn">{editingId ? "Save changes" : "Add service"}</button>
-            {editingId && <button type="button" className="secondary-btn" onClick={() => { setEditingId(null); setForm({ name: "", frequency: "Monthly", due_day: 20 }); }}>Cancel</button>}
+            {editingId && <button type="button" className="secondary-btn" onClick={() => { setEditingId(null); setForm({ name: "", frequency: "Monthly", due_day: 20, due_month: "", is_active: true }); }}>Cancel</button>}
           </div>
         </form>
       </section>
@@ -147,7 +164,7 @@ export default function Services() {
           <div className="table-wrap">
             <table>
               <thead>
-                <tr><th>Name</th><th>Frequency</th><th>Due day</th><th>Actions</th></tr>
+                <tr><th>Name</th><th>Frequency</th><th>Due day</th><th>Due month</th><th>Status</th><th>Actions</th></tr>
               </thead>
               <tbody>
                 {services.map((s) => (
@@ -161,6 +178,7 @@ export default function Services() {
                         ["Name", s.name],
                         ["Frequency", s.frequency || "—"],
                         ["Due day", s.due_day ? `Day ${s.due_day}` : "—"],
+                        ["Due month", s.due_month ? new Date(2000, s.due_month - 1, 1).toLocaleString("en", { month: "long" }) : "Any month"],
                         ["Status", s.is_active === false ? "Inactive" : "Active"],
                       ],
                     })}
@@ -168,6 +186,8 @@ export default function Services() {
                     <td><strong>{s.name}</strong></td>
                     <td>{s.frequency}</td>
                     <td>{s.due_day}</td>
+                    <td>{s.due_month ? new Date(2000, s.due_month - 1, 1).toLocaleString("en", { month: "long" }) : "Any"}</td>
+                    <td><span className={`status-chip ${s.is_active === false ? "pending" : "paid"}`}>{s.is_active === false ? "Inactive" : "Active"}</span></td>
                     <td onClick={(e) => e.stopPropagation()}>
                       <div className="row-actions">
                         <button className="icon-btn sm" title="Edit" onClick={() => edit(s)}><Pencil size={15} /></button>

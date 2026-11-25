@@ -131,11 +131,13 @@ export default function Dashboard() {
 
   async function tickTask(t) {
     await api.patch(`/api/tasks/${t.id}/done`, { done: true });
-    loadData();
+    window.dispatchEvent(new Event("gst:data-changed"));
+    await loadData();
   }
   async function tickFee(f) {
     await api.patch(`/api/fees/${f.id}/paid`, { paid: true });
-    loadData();
+    window.dispatchEvent(new Event("gst:data-changed"));
+    await loadData();
   }
 
   const dayCards = [

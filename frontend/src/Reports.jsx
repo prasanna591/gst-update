@@ -52,13 +52,24 @@ const GROUP_OPTIONS = {
   documents: ["client", "month"],
 };
 
-const DATE_FIELDS = {
-  clients: "date_of_birth",
-  filings: "due_date",
-  fees: "due_date",
-  tasks: "due_date",
-  documents: "uploaded_at",
+const DATE_FIELD_OPTIONS = {
+  clients: [{ value: "date_of_birth", label: "Date of birth" }],
+  filings: [
+    { value: "due_date", label: "Due date" },
+    { value: "filed_date", label: "Filed date" },
+  ],
+  fees: [
+    { value: "due_date", label: "Due date" },
+    { value: "paid_date", label: "Paid date" },
+    { value: "expected_date", label: "Expected date" },
+  ],
+  tasks: [{ value: "due_date", label: "Due date" }],
+  documents: [{ value: "uploaded_at", label: "Uploaded date" }],
 };
+
+const DEFAULT_DATE_FIELD = Object.fromEntries(
+  Object.entries(DATE_FIELD_OPTIONS).map(([section, options]) => [section, options[0].value])
+);
 
 const EMPTY_FILTERS = {
   client_id: "",
@@ -66,20 +77,23 @@ const EMPTY_FILTERS = {
   return_type: "",
   from_date: "",
   to_date: "",
+  date_field: "",
   group_by: "",
 };
 
 function sectionFilters(section, source = {}) {
   const merged = { ...EMPTY_FILTERS, ...source };
-  if (section === "summary" || !DATE_FIELDS[section]) {
+  if (section === "summary" || !DATE_FIELD_OPTIONS[section]) {
     return { ...EMPTY_FILTERS };
   }
+  const allowed = DATE_FIELD_OPTIONS[section].map((option) => option.value);
   return {
     client_id: merged.client_id,
     status: STATUS_OPTIONS[section]?.includes(merged.status) ? merged.status : "",
     return_type: section === "filings" ? merged.return_type : "",
     from_date: merged.from_date,
     to_date: merged.to_date,
+    date_field: allowed.includes(merged.date_field) ? merged.date_field : DEFAULT_DATE_FIELD[section],
     group_by: GROUP_OPTIONS[section]?.includes(merged.group_by) ? merged.group_by : "",
   };
 }
@@ -134,8 +148,8 @@ export default function Reports() {
     Object.entries(active).forEach(([key, value]) => {
       if (value) params.set(key, String(value));
     });
-    if ((active.from_date || active.to_date) && DATE_FIELDS[overrideSection]) {
-      params.set("date_field", DATE_FIELDS[overrideSection]);
+    if ((active.from_date || active.to_date) && active.date_field) {
+      params.set("date_field", active.date_field);
     }
     params.set("format", fmt);
     return params;
@@ -344,6 +358,7 @@ export default function Reports() {
 
   const statusOptions = STATUS_OPTIONS[section] || [];
   const groupOptions = GROUP_OPTIONS[section] || [];
+  const dateOptions = DATE_FIELD_OPTIONS[section] || [];
   const busy = loading || downloading;
   const sectionLabel = SECTIONS.find((item) => item.value === section)?.label || "Report";
   const activeFilters = sectionFilters(section, filters);
@@ -351,6 +366,7 @@ export default function Reports() {
     activeFilters.client_id && `Client: ${clients.find((c) => String(c.id) === String(activeFilters.client_id))?.client_name || "Selected client"}`,
     activeFilters.status && `Status: ${activeFilters.status}`,
     activeFilters.return_type && `Return type: ${activeFilters.return_type}`,
+    (activeFilters.from_date || activeFilters.to_date) && `Date: ${dateOptions.find((option) => option.value === activeFilters.date_field)?.label || "Date"}`,
     activeFilters.from_date && `From: ${activeFilters.from_date}`,
     activeFilters.to_date && `To: ${activeFilters.to_date}`,
     activeFilters.group_by && `Grouped by: ${GROUP_LABELS[activeFilters.group_by]}`,
@@ -526,6 +542,20 @@ export default function Reports() {
                 </label>
               )}
 
+              {dateOptions.length > 0 && (
+                <label className="report-field">
+                  <span>Date field</span>
+                  <select
+                    className="filter-select"
+                    value={filters.date_field || DEFAULT_DATE_FIELD[section] || ""}
+                    onChange={(e) => setFilters({ ...filters, date_field: e.target.value })}
+                  >
+                    {dateOptions.map((option) => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
+                  </select>
+                </label>
+              )}
               <label className="report-field">
                 <span>From date</span>
                 <input

@@ -696,9 +696,9 @@ export default function Fees() {
                   const follow = followupText(f);
                   const late = f.status !== "Paid" && daysFrom(f.due_date) < 0;
                   return (
-                    <tr key={f.id} className={`${late ? "row-late" : f.status === "Paid" ? "row-paid" : ""}`}>
-                      <td><input type="checkbox" checked={selected.includes(f.id)} onChange={() => toggleSelect(f.id)} title="Select fee" /></td>
-                      <td><input type="checkbox" className="task-check" checked={f.status === "Paid"} onChange={() => toggle(f)} title="Mark fully paid" /></td>
+                    <tr key={f.id} className={`clickable-row ${late ? "row-late" : f.status === "Paid" ? "row-paid" : ""}`} onClick={() => openDetails(f)}>
+                      <td onClick={(e) => e.stopPropagation()}><input type="checkbox" checked={selected.includes(f.id)} onChange={() => toggleSelect(f.id)} title="Select fee" /></td>
+                      <td onClick={(e) => e.stopPropagation()}><input type="checkbox" className="task-check" checked={f.status === "Paid"} onChange={() => toggle(f)} title="Mark fully paid" /></td>
                       <td>
                         <div className="person">
                           <div className={`avatar av-${f.client_id % 5}`}>{(f.client_name || "?").charAt(0).toUpperCase()}</div>
@@ -706,7 +706,7 @@ export default function Fees() {
                         </div>
                       </td>
                       <td>
-                        <button className="link-btn" onClick={() => openDetails(f)}>{f.purpose}</button>
+                        <button className="link-btn" onClick={(e) => { e.stopPropagation(); openDetails(f); }}>{f.purpose}</button>
                         <span className="fee-meta">{f.reference_person || "No contact"}</span>
                         <span className={`stage-chip stage-${(f.process_stage || "New").toLowerCase().replace(/\s+/g, "-")}`}>{f.process_stage || "New"}</span>
                         {Number(f.upfront_amount) > 0 && <span className={`upfront-badge ${f.upfront_status === "Received" ? "done" : ""}`}>Upfront {f.upfront_status}</span>}
@@ -719,7 +719,7 @@ export default function Fees() {
                       </td>
                       <td>{fmt(f.due_date)}<span className={`due-note ${due.cls}`}>{due.text}</span></td>
                       <td>{follow.text === "Not scheduled" ? <span className="muted">—</span> : <span className={`due-note ${follow.cls}`}>{follow.text}</span>}{f.followup_note && <span className="fee-meta">{f.followup_note}</span>}</td>
-                      <td>
+                      <td onClick={(e) => e.stopPropagation()}>
                         <div className="row-actions">
                           <button className="icon-btn sm" title="Fee details and activity" onClick={() => openDetails(f)}><FileText size={15} /></button>
                           <button className="icon-btn sm" title="Record payment" onClick={() => openPayment(f)}><Wallet size={15} /></button>
