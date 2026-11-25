@@ -10,27 +10,24 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_user, get_db, require_admin
+from app.database import data_dir
 from app.models import Client, Document, Filing, User
 from app.schemas import DocumentResponse
 
 router = APIRouter(prefix="/api/documents", tags=["Documents"])
 
 
-def _data_dir() -> Path:
+def upload_dir() -> Path:
     configured = os.getenv("DATA_DIR")
 
     if configured and not getattr(sys, "frozen", False):
         folder = Path(configured)
     else:
-        base = os.getenv("APPDATA") or str(Path.home())
-        folder = Path(base) / "GSTClientApp"
+        folder = data_dir()
 
+    folder = folder / "uploads"
     folder.mkdir(parents=True, exist_ok=True)
     return folder
-
-
-UPLOAD_DIR = _data_dir() / "uploads"
-UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 MAX_BYTES = 10 * 1024 * 1024
 
@@ -106,7 +103,7 @@ def upload_document(
         raise HTTPException(status_code=422, detail="Invalid content type")
 
     stored = f"{uuid.uuid4().hex}{ext}"
-    path = UPLOAD_DIR / stored
+    path = upload_dir() / stored
     size = 0
 
     try:
@@ -166,13 +163,14 @@ def upload_document(
 def download_document(
     doc_id: int,
     db: Session = Depends(get_db),
+    _: User = Depends(get_current_user),
 ):
     doc = db.query(Document).filter(Document.id == doc_id).first()
 
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
 
-    upload_root = UPLOAD_DIR.resolve()
+    upload_root = upload_dir().resolve()
     path = (upload_root / doc.stored_filename).resolve()
 
     if upload_root not in path.parents or not path.is_file():
@@ -199,7 +197,7 @@ def delete_document(
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
 
-    upload_root = UPLOAD_DIR.resolve()
+    upload_root = upload_dir().resolve()
     path = (upload_root / doc.stored_filename).resolve()
 
     if upload_root not in path.parents:

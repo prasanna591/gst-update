@@ -146,17 +146,21 @@ def upcoming(db: Session = Depends(get_db)):
             out.append({"type": "Filing", "title": names.get(f.client_id, "Client"),
                         "subtitle": f"{f.return_type} · {f.period}", "days": days, "link": "/filings"})
 
-    for f in db.query(Fee).filter(Fee.status == "Pending").all():
+    for f in db.query(Fee).filter(Fee.status != "Paid").all():
         days = (f.due_date - today).days
         if days <= WINDOW:
             out.append({"type": "Fee", "title": names.get(f.client_id, "Client"),
-                        "subtitle": f"Fee ₹{float(f.amount):,.0f} · {f.purpose}", "days": days, "link": "/fees"})
+                        "subtitle": f"Fee ₹{float(f.amount - (f.paid_amount or 0)):,.0f} · {f.purpose}", "days": days, "link": "/fees"})
+
 
     for t in db.query(Task).filter(Task.is_done == False).all():
         days = (t.due_date - today).days
         if days <= 0 or (t.priority == "High" and days <= 3):
+            subtitle = "Important task" if t.priority == "High" else "Task"
+            if t.due_time:
+                subtitle = f"{subtitle} · {t.due_time}"
             out.append({"type": "Task", "title": t.title,
-                        "subtitle": "Important task" if t.priority == "High" else "Task",
+                        "subtitle": subtitle,
                         "days": days, "link": "/tasks"})
 
     for i in date_items(db, today):

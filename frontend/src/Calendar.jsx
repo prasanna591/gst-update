@@ -55,9 +55,10 @@ function buildEvents(filings, fees, tasks, dates) {
     if (!t.due_date) continue;
     events.push({
       date: String(t.due_date).slice(0, 10),
+      time: t.due_time || "",
       type: "Task",
       title: t.title,
-      subtitle: `${t.priority || "Normal"} · ${t.is_done ? "Done" : "Open"}`,
+      subtitle: `${t.priority || "Normal"} · ${t.is_done ? "Done" : "Open"}${t.due_time ? ` · ${t.due_time}` : ""}`,
       link: "/tasks",
     });
   }
@@ -115,7 +116,7 @@ export default function Calendar() {
 
   const monthPrefix = `${view.year}-${String(view.month + 1).padStart(2, "0")}`;
   const monthEvents = useMemo(
-    () => events.filter((event) => event.date.startsWith(monthPrefix)).sort((a, b) => a.date.localeCompare(b.date)),
+    () => events.filter((event) => event.date.startsWith(monthPrefix)).sort((a, b) => a.date.localeCompare(b.date) || (a.time || "").localeCompare(b.time || "")),
     [events, monthPrefix]
   );
 

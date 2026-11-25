@@ -3,7 +3,7 @@ import { Link, useLocation } from "react-router-dom";
 import {
   ArrowLeft, Clock, AlertTriangle, CheckCircle2, FileText, Download,
 } from "lucide-react";
-import api from "./api";
+import api, { apiErrorMessage } from "./api";
 
 function todayStr() {
   return new Date().toLocaleDateString("en-CA");
@@ -69,7 +69,7 @@ export default function ClientDetail() {
         setError(
           err.response?.status === 404
             ? "This client does not exist."
-            : "Unable to load this client. Check that the backend is running."
+            : `Unable to load this client: ${await apiErrorMessage(err, "Check that the backend is running.")}`
         );
       } finally {
         if (!cancelled) setLoading(false);
@@ -81,16 +81,23 @@ export default function ClientDetail() {
   }, [id]);
 
   async function download(doc) {
+    let url;
+    let anchor;
     try {
       const res = await api.get(`/api/documents/${doc.id}/download`, { responseType: "blob" });
-      const url = URL.createObjectURL(res.data);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = doc.original_filename;
-      a.click();
-      setTimeout(() => URL.revokeObjectURL(url), 10000);
-    } catch {
-      setError("Could not download the document.");
+      url = URL.createObjectURL(res.data);
+      anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = doc.original_filename || "document";
+      document.body.appendChild(anchor);
+      anchor.click();
+    } catch (err) {
+      setError(
+        `Could not download the document: ${await apiErrorMessage(err, "Please try again.")}`
+      );
+    } finally {
+      anchor?.remove();
+      if (url) setTimeout(() => URL.revokeObjectURL(url), 10000);
     }
   }
 

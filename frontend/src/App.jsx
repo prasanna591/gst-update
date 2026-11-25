@@ -4,6 +4,7 @@ import { NavLink, Link, useLocation, useNavigate } from "react-router-dom";
 import Auditors from "./Auditors";
 import Filings from "./Filings";
 import Fees from "./Fees";
+import Invoices from "./Invoices";
 import Tasks from "./Tasks";
 import ImportantDates from "./ImportantDates";
 import Dashboard from "./Dashboard";
@@ -20,9 +21,9 @@ import Reports from "./Reports";
 import Calendar from "./Calendar";
 import { useAuth } from "./authContext";
 import {
-  Users, Search, Plus, LayoutDashboard, FileText, CalendarDays, IndianRupee, ListChecks, Gift,
+  Users, Search, Plus, LayoutDashboard, FileText, CalendarDays, IndianRupee, ListChecks, Gift, ReceiptText,
   Settings, RefreshCw, X, Pencil, Eye, CheckCircle2, AlertCircle, UserCheck, LogOut, ShieldCheck, Menu,
-  Briefcase, BarChart3, Trash2,
+  Briefcase, BarChart3, Trash2, Mail, Phone,
 } from "lucide-react";
 import api from "./api";
 import "./App.css";
@@ -42,6 +43,7 @@ export default function App() {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [logoutConfirm, setLogoutConfirm] = useState(false);
 
   const pageTitle = (() => {
     if (pathname === "/") return "Dashboard";
@@ -54,6 +56,7 @@ export default function App() {
     if (pathname === "/services") return "Services";
     if (pathname === "/filings") return "GST filings";
     if (pathname === "/fees") return "Fees";
+    if (pathname === "/invoices") return "Invoices";
     if (pathname === "/documents") return "Documents";
     if (pathname === "/reports") return "Custom reports";
     if (pathname === "/settings") return "Settings";
@@ -360,6 +363,7 @@ export default function App() {
           <NavLink className="nav-item" to="/services"><Briefcase size={18} /> Services</NavLink>
           <NavLink className="nav-item" to="/filings"><CalendarDays size={18} /> GST filings</NavLink>
           <NavLink className="nav-item" to="/fees"><IndianRupee size={18} /> Fees <NavBadge kind="fees" /></NavLink>
+          <NavLink className="nav-item" to="/invoices"><ReceiptText size={18} /> Invoices</NavLink>
           <NavLink className="nav-item" to="/documents"><FileText size={18} /> Documents</NavLink>
           <NavLink className="nav-item" to="/reports"><BarChart3 size={18} /> Reports</NavLink>
           <NavLink className="nav-item" to="/settings"><Settings size={18} /> Settings</NavLink>
@@ -369,6 +373,12 @@ export default function App() {
         </nav>
 
         <div className="sidebar-footer">
+          <div className="support-card">
+            <strong>Customer care</strong>
+            <span>PSM INNOVTION PRIVATE LIMITED</span>
+            <a href="mailto:hello@problemsolvingmind.com"><Mail size={13} /> hello@problemsolvingmind.com</a>
+            <a href="tel:9360207861"><Phone size={13} /> 9360207861</a>
+          </div>
           <SyncStatus />
           <div className="user-card">
             <div className="user-avatar">
@@ -383,7 +393,7 @@ export default function App() {
               className="icon-btn sm logout-btn"
               title={`Sign out${user?.email ? ` (${user.email})` : ""}`}
               aria-label={`Sign out${user?.email ? ` (${user.email})` : ""}`}
-              onClick={logout}
+              onClick={() => setLogoutConfirm(true)}
             >
               <LogOut size={15} />
               <span className="logout-label">Sign out</span>
@@ -419,6 +429,8 @@ export default function App() {
         <Filings />
       ) : pathname === "/fees" ? (
         <Fees />
+      ) : pathname === "/invoices" ? (
+        <Invoices />
       ) : pathname === "/tasks" ? (
         <Tasks />
       ) : pathname === "/calendar" ? (
@@ -634,7 +646,6 @@ export default function App() {
                   ["phone", "Mobile number *", true],
                   ["email", "Email"],
                   ["religion", "Religion *", true],
-                  ["referred_by", "Referred by"],
                   ["gstin", "GSTIN"],
                   ["pan", "PAN"],
                   ["business_registration", "Business registration"],
@@ -648,6 +659,26 @@ export default function App() {
                     />
                   </label>
                 ))}
+                <label>
+                  Referred by
+                  <input
+                    list="referrer-options"
+                    value={form.referred_by}
+                    onChange={(e) => setField("referred_by", e.target.value)}
+                  />
+                  <datalist id="referrer-options">
+                    {clients
+                      .filter((c) => c.id !== editingId)
+                      .map((c) => (
+                        <option key={c.id} value={c.client_name || ""}>
+                          {c.business_name
+                            ? `${c.client_name} (${c.business_name})`
+                            : c.client_name}
+                        </option>
+                      ))}
+                  </datalist>
+                  <small className="muted">Choose an existing client or type a name.</small>
+                </label>
                 <div className="full-width service-field">
                   <span>Services *</span>
                   <div className="service-picker">
@@ -769,6 +800,24 @@ export default function App() {
       )}
 
       </main>
+
+      {logoutConfirm && (
+        <div className="modal-backdrop" onClick={() => setLogoutConfirm(false)}>
+          <section className="modal confirm-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-heading">
+              <h2><AlertCircle size={18} /> Sign out?</h2>
+              <button className="icon-btn" onClick={() => setLogoutConfirm(false)} title="Close"><X /></button>
+            </div>
+            <p className="settings-hint">You will need to sign in again to continue using GST Office.</p>
+            <div className="modal-actions">
+              <button className="secondary-btn" onClick={() => setLogoutConfirm(false)}>Cancel</button>
+              <button className="primary-btn danger-btn" onClick={() => { setLogoutConfirm(false); logout(); }}>
+                <LogOut size={15} /> Sign out
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
 
       {toast && (
         <div className={`toast ${toast.type}`} role="status">

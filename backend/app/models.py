@@ -1,3 +1,5 @@
+from datetime import date
+
 from sqlalchemy import Column, Integer, String, Text, Boolean, Date, DateTime, ForeignKey, Numeric, func
 from app.database import engine
 
@@ -62,8 +64,52 @@ class Fee(Base):
     expected_date = Column(Date, nullable=True)
     reference_person = Column(String(150), nullable=True)
     status = Column(String(10), nullable=False, default="Pending")
+    paid_amount = Column(Numeric(12, 2), nullable=False, default=0, server_default="0")
     paid_date = Column(Date, nullable=True)
+    upfront_amount = Column(Numeric(12, 2), nullable=False, default=0, server_default="0")
+    upfront_paid_date = Column(Date, nullable=True)
+    process_stage = Column(String(20), nullable=False, default="New", server_default="New")
+    next_followup_date = Column(Date, nullable=True)
+    followup_note = Column(Text, nullable=True)
     notes = Column(Text, nullable=True)
+
+
+class FeePayment(Base):
+    __tablename__ = "fee_payments"
+
+    id = Column(Integer, primary_key=True, index=True)
+    fee_id = Column(Integer, ForeignKey("fees.id"), nullable=False, index=True)
+    amount = Column(Numeric(12, 2), nullable=False)
+    payment_date = Column(Date, nullable=False)
+    method = Column(String(30), nullable=False, default="Cash")
+    reference = Column(String(100), nullable=True)
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime, nullable=False, server_default=func.now())
+
+
+class FeeInstallment(Base):
+    __tablename__ = "fee_installments"
+
+    id = Column(Integer, primary_key=True, index=True)
+    fee_id = Column(Integer, ForeignKey("fees.id"), nullable=False, index=True)
+    amount = Column(Numeric(12, 2), nullable=False)
+    due_date = Column(Date, nullable=False)
+    status = Column(String(10), nullable=False, default="Pending", server_default="Pending")
+    paid_date = Column(Date, nullable=True)
+    payment_id = Column(Integer, ForeignKey("fee_payments.id"), nullable=True)
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime, nullable=False, server_default=func.now())
+
+
+class FeeActivity(Base):
+    __tablename__ = "fee_activities"
+
+    id = Column(Integer, primary_key=True, index=True)
+    fee_id = Column(Integer, ForeignKey("fees.id"), nullable=False, index=True)
+    kind = Column(String(30), nullable=False)
+    message = Column(Text, nullable=False)
+    activity_date = Column(Date, nullable=False, default=date.today)
+    created_at = Column(DateTime, nullable=False, server_default=func.now())
 
 
 class User(Base):
@@ -100,11 +146,13 @@ class Task(Base):
     title = Column(String(200), nullable=False)
     notes = Column(Text, nullable=True)
     due_date = Column(Date, nullable=False)
+    due_time = Column(String(5), nullable=True)
     priority = Column(String(10), nullable=False, default="Normal")   # Normal or High
     is_done = Column(Boolean, nullable=False, default=False)
     done_at = Column(DateTime, nullable=True)
     client_id = Column(Integer, ForeignKey("clients.id"), nullable=True)
     service_id = Column(Integer, ForeignKey("services.id"), nullable=True)
+    fee_id = Column(Integer, ForeignKey("fees.id"), nullable=True)
     period = Column(String(10), nullable=True)
     auto_generated = Column(Boolean, nullable=False, default=False)
     recurrence = Column(String(12), nullable=False, default="None")
@@ -169,6 +217,7 @@ class Notification(Base):
     kind = Column(String(20), nullable=False, default="Reminder")
     link = Column(String(200), nullable=True)
     is_read = Column(Boolean, nullable=False, default=False)
+    dismissed = Column(Boolean, nullable=False, default=False, server_default="0")
     created_at = Column(DateTime, nullable=False, server_default=func.now())
 
 
@@ -205,4 +254,5 @@ class NotificationRule(Base):
     enabled = Column(Boolean, nullable=False, default=True)
     include_overdue = Column(Boolean, nullable=False, default=True)
     link = Column(String(200), nullable=False, default="/")
+    notify_time = Column(String(5), nullable=False, default="09:00")
     updated_at = Column(DateTime, nullable=False, server_default=func.now(), onupdate=func.now())

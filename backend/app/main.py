@@ -27,7 +27,7 @@ from app.database import check_database
 from app.clients import router as clients_router
 from app.auditors import router as auditors_router
 from app.filings import router as filings_router
-from app.fees import router as fees_router
+from app.fees import router as fees_router, backfill_fee_payments
 from app.tasks import router as tasks_router
 from app.reminders import router as reminders_router
 from app.auth import get_current_user, router as auth_router
@@ -63,6 +63,7 @@ app = FastAPI(
 )
 Base.metadata.create_all(bind=engine)
 ensure_columns(engine)
+backfill_fee_payments()
 
 
 logger = logging.getLogger("whatsapp_webhook")

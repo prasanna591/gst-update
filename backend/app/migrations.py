@@ -10,11 +10,27 @@ _COLUMNS = {
         "referred_by": ("VARCHAR(150)", "VARCHAR(150)"),
         "religion": ("VARCHAR(50)", "VARCHAR(50)"),
     },
+    "fees": {
+        "paid_amount": ("NUMERIC(12,2) NOT NULL DEFAULT 0", "NUMERIC(12,2) NOT NULL DEFAULT 0"),
+        "upfront_amount": ("NUMERIC(12,2) NOT NULL DEFAULT 0", "NUMERIC(12,2) NOT NULL DEFAULT 0"),
+        "upfront_paid_date": ("DATE", "DATE"),
+        "process_stage": ("VARCHAR(20) NOT NULL DEFAULT 'New'", "VARCHAR(20) NOT NULL DEFAULT 'New'"),
+        "next_followup_date": ("DATE", "DATE"),
+        "followup_note": ("TEXT", "TEXT"),
+    },
+    "notifications": {
+        "dismissed": ("BOOLEAN NOT NULL DEFAULT 0", "BOOLEAN NOT NULL DEFAULT FALSE"),
+    },
+    "notification_rules": {
+        "notify_time": ("VARCHAR(5) NOT NULL DEFAULT '09:00'", "VARCHAR(5) NOT NULL DEFAULT '09:00'"),
+    },
     "users": {
         "token_version": ("INTEGER NOT NULL DEFAULT 0", "INTEGER NOT NULL DEFAULT 0"),
     },
     "tasks": {
+        "due_time": ("VARCHAR(5)", "VARCHAR(5)"),
         "service_id": ("INTEGER", "INTEGER"),
+        "fee_id": ("INTEGER", "INTEGER"),
         "period": ("VARCHAR(10)", "VARCHAR(10)"),
         "auto_generated": ("BOOLEAN NOT NULL DEFAULT 0", "BOOLEAN NOT NULL DEFAULT FALSE"),
         "recurrence": ("VARCHAR(12) NOT NULL DEFAULT 'None'", "VARCHAR(12) NOT NULL DEFAULT 'None'"),

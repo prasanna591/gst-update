@@ -1,6 +1,7 @@
+import re
 import threading
 import time
-from datetime import date
+from datetime import date, datetime
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -23,6 +24,7 @@ DEFAULT_RULES = {
         "enabled": True,
         "include_overdue": True,
         "link": "/filings",
+        "notify_time": "09:00",
     },
     "Fee": {
         "label": "Fee due dates",
@@ -30,6 +32,7 @@ DEFAULT_RULES = {
         "enabled": True,
         "include_overdue": True,
         "link": "/fees",
+        "notify_time": "09:00",
     },
     "Task": {
         "label": "Task due dates",
@@ -37,6 +40,7 @@ DEFAULT_RULES = {
         "enabled": True,
         "include_overdue": True,
         "link": "/tasks",
+        "notify_time": "09:00",
     },
     "Date": {
         "label": "Client dates",
@@ -44,9 +48,12 @@ DEFAULT_RULES = {
         "enabled": True,
         "include_overdue": False,
         "link": "/dates",
+        "notify_time": "09:00",
     },
 }
 GENERATED_PREFIXES = {"filing", "fee", "task", "date"}
+RULE_PREFIXES = {"Filing": "filing", "Fee": "fee", "Task": "task", "Date": "date"}
+ALERT_TIME_RE = re.compile(r" · Alerts at \d{2}:\d{2}$")
 
 
 class MarkRead(BaseModel):
@@ -59,6 +66,7 @@ class RuleIn(BaseModel):
     enabled: bool = True
     include_overdue: bool = True
     link: str = Field(default="/", max_length=200)
+    notify_time: str = Field(default="09:00", pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
 
 
 def _days_text(days: int) -> str:
@@ -69,6 +77,31 @@ def _days_text(days: int) -> str:
     return f"due in {days} day{'s' if days != 1 else ''}"
 
 
+def _notify_time(rule: NotificationRule) -> str:
+    return rule.notify_time or "09:00"
+
+
+def _time_reached(rule: NotificationRule) -> bool:
+    return datetime.now().strftime("%H:%M") >= _notify_time(rule)
+
+
+def _alerted(body: str, rule: NotificationRule) -> str:
+    return f"{body} · Alerts at {_notify_time(rule)}"
+
+
+def _refresh_rule_time(db: Session, kind: str, notify_time: str) -> None:
+    prefix = RULE_PREFIXES.get(kind)
+    if not prefix:
+        return
+    for notification in db.query(Notification).filter(Notification.key.like(f"{prefix}:%")).all():
+        body = notification.body or ""
+        if ALERT_TIME_RE.search(body):
+            body = ALERT_TIME_RE.sub(f" · Alerts at {notify_time}", body)
+        else:
+            body = f"{body} · Alerts at {notify_time}".strip(" ·")
+        notification.body = body
+
+
 def _rule_out(rule: NotificationRule) -> dict:
     return {
         "kind": rule.kind,
@@ -77,6 +110,7 @@ def _rule_out(rule: NotificationRule) -> dict:
         "enabled": bool(rule.enabled),
         "include_overdue": bool(rule.include_overdue),
         "link": rule.link,
+        "notify_time": rule.notify_time or "09:00",
     }
 
 
@@ -92,6 +126,39 @@ def _rules(db: Session) -> dict[str, NotificationRule]:
     return rules
 
 
+def create_notification(
+    db: Session,
+    key: str,
+    title: str,
+    body: str | None,
+    kind: str,
+    link: str | None = "/",
+    reset_dismissed: bool = False,
+) -> Notification:
+    notification = db.query(Notification).filter(Notification.key == key).first()
+    if notification:
+        notification.title = title
+        notification.body = body
+        notification.kind = kind
+        notification.link = link
+        if reset_dismissed:
+            notification.dismissed = False
+            notification.is_read = False
+    else:
+        notification = Notification(
+            key=key[:120],
+            title=title,
+            body=body,
+            kind=kind,
+            link=link,
+            is_read=False,
+            dismissed=False,
+        )
+        db.add(notification)
+    db.flush()
+    return notification
+
+
 def _candidates(db: Session, today: date) -> dict[str, dict]:
     items: dict[str, dict] = {}
     rules = _rules(db)
@@ -99,6 +166,8 @@ def _candidates(db: Session, today: date) -> dict[str, dict]:
     def include(kind: str, days: int) -> bool:
         rule = rules.get(kind)
         if not rule or not rule.enabled:
+            return False
+        if not _time_reached(rule):
             return False
         if days > rule.lead_days:
             return False
@@ -120,7 +189,7 @@ def _candidates(db: Session, today: date) -> dict[str, dict]:
         key = f"filing:{filing.id}:{filing.due_date.isoformat()}"
         items[key] = {
             "title": f"{name}: {filing.return_type} filing",
-            "body": f"{filing.period} · {_days_text(days)}",
+            "body": _alerted(f"{filing.period} · {_days_text(days)}", rules["Filing"]),
             "kind": "Filing",
             "link": rules["Filing"].link,
         }
@@ -128,7 +197,7 @@ def _candidates(db: Session, today: date) -> dict[str, dict]:
     fees = (
         db.query(Fee, Client.client_name)
         .outerjoin(Client, Client.id == Fee.client_id)
-        .filter(Fee.status == "Pending")
+        .filter(Fee.status != "Paid")
         .all()
     )
     for fee, client_name in fees:
@@ -139,7 +208,7 @@ def _candidates(db: Session, today: date) -> dict[str, dict]:
         key = f"fee:{fee.id}:{fee.due_date.isoformat()}"
         items[key] = {
             "title": f"{name}: payment due",
-            "body": f"₹{float(fee.amount):,.0f} · {fee.purpose} · {_days_text(days)}",
+            "body": _alerted(f"₹{float(fee.amount - (fee.paid_amount or 0)):,.0f} · {fee.purpose} · {_days_text(days)}", rules["Fee"]),
             "kind": "Fee",
             "link": rules["Fee"].link,
         }
@@ -150,9 +219,14 @@ def _candidates(db: Session, today: date) -> dict[str, dict]:
         if not include("Task", days):
             continue
         key = f"task:{task.id}:{task.due_date.isoformat()}"
+        if task.due_time:
+            key = f"{key}:{task.due_time}"
+        body = _days_text(days)
+        if task.due_time:
+            body = f"{task.due_time} · {body}"
         items[key] = {
             "title": task.title,
-            "body": _days_text(days),
+            "body": _alerted(body, rules["Task"]),
             "kind": "Task",
             "link": rules["Task"].link,
         }
@@ -163,7 +237,7 @@ def _candidates(db: Session, today: date) -> dict[str, dict]:
         key = f"date:{item['key']}:{item['date'].isoformat()}"
         items[key] = {
             "title": item["title"],
-            "body": _days_text(item["days"]),
+            "body": _alerted(_days_text(item["days"]), rules["Date"]),
             "kind": item["kind"],
             "link": rules["Date"].link,
         }
@@ -181,6 +255,8 @@ def sync_notifications(db: Session) -> None:
     for key, data in wanted.items():
         notification = existing.get(key)
         if notification:
+            if notification.dismissed:
+                continue
             notification.title = data["title"]
             notification.body = data["body"]
             notification.kind = data["kind"]
@@ -198,6 +274,7 @@ def list_notifications(user=Depends(get_current_user), db: Session = Depends(get
     sync_notifications(db)
     return (
         db.query(Notification)
+        .filter(Notification.dismissed.is_(False))
         .order_by(Notification.is_read, Notification.created_at.desc())
         .all()
     )
@@ -215,6 +292,9 @@ def reset_rules(db: Session = Depends(get_db), user=Depends(require_admin)):
     db.query(NotificationRule).delete()
     db.commit()
     _rules(db)
+    for kind, values in DEFAULT_RULES.items():
+        _refresh_rule_time(db, kind, values["notify_time"])
+    db.commit()
     rows = db.query(NotificationRule).order_by(NotificationRule.id.asc()).all()
     return [_rule_out(row) for row in rows]
 
@@ -230,8 +310,10 @@ def update_rule(
     rule = rules.get(kind)
     if not rule:
         raise HTTPException(404, "Notification rule not found")
-    for field, value in payload.model_dump().items():
+    values = payload.model_dump()
+    for field, value in values.items():
         setattr(rule, field, value)
+    _refresh_rule_time(db, kind, values["notify_time"])
     db.commit()
     db.refresh(rule)
     return _rule_out(rule)
@@ -261,6 +343,44 @@ def read_all(user=Depends(get_current_user), db: Session = Depends(get_db)):
     return {"ok": True}
 
 
+@router.delete("/{notification_id}")
+def dismiss_notification(
+    notification_id: int,
+    user=Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    notification = db.get(Notification, notification_id)
+    if not notification:
+        raise HTTPException(404, "Notification not found")
+    notification.dismissed = True
+    notification.is_read = True
+    db.commit()
+    return {"ok": True}
+
+
+@router.post("/{notification_id}/restore")
+def restore_notification(
+    notification_id: int,
+    user=Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    notification = db.get(Notification, notification_id)
+    if not notification:
+        raise HTTPException(404, "Notification not found")
+    notification.dismissed = False
+    db.commit()
+    return {"ok": True}
+
+
+@router.post("/dismiss-all")
+def dismiss_all(user=Depends(get_current_user), db: Session = Depends(get_db)):
+    updated = db.query(Notification).filter(Notification.dismissed.is_(False)).update(
+        {"dismissed": True, "is_read": True}
+    )
+    db.commit()
+    return {"updated": updated}
+
+
 def _loop():
     while True:
         db = SessionLocal()
@@ -270,7 +390,7 @@ def _loop():
             db.rollback()
         finally:
             db.close()
-        time.sleep(15 * 60)
+        time.sleep(60)
 
 
 def start_notifications():

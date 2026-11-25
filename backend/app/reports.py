@@ -6,7 +6,7 @@ from io import StringIO
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import and_, true
+from sqlalchemy import and_, func, true
 from sqlalchemy.orm import Session, joinedload
 
 from app.auth import get_current_user, get_db
@@ -17,6 +17,11 @@ router = APIRouter(prefix="/api/reports", tags=["Reports"])
 SECTIONS = {"clients", "filings", "fees", "tasks", "documents", "summary"}
 DATE_SECTIONS = {"clients", "filings", "fees", "tasks", "documents"}
 STATUS_SECTIONS = {"filings", "fees", "tasks"}
+STATUS_VALUES = {
+    "filings": {"Pending", "Filed", "Overdue"},
+    "fees": {"Pending", "Partial", "Paid", "Overdue"},
+    "tasks": {"Pending", "Done", "Overdue"},
+}
 
 
 class TemplateIn(BaseModel):
@@ -161,7 +166,7 @@ def _serialize_client(row: Client) -> dict:
 def _serialize_filing(db: Session, row: Filing) -> dict:
     due = row.due_date
     today = date.today()
-    overdue = row.status != "Filed" and due < today
+    overdue = due is not None and row.status != "Filed" and due < today
     return {
         "id": row.id,
         "client_id": row.client_id,
@@ -179,13 +184,15 @@ def _serialize_filing(db: Session, row: Filing) -> dict:
 def _serialize_fee(db: Session, row: Fee) -> dict:
     due = row.due_date
     today = date.today()
-    overdue = row.status != "Paid" and due < today
+    overdue = due is not None and row.status != "Paid" and due < today
     return {
         "id": row.id,
         "client_id": row.client_id,
         "client_name": _client_name_by_id(db, row.client_id),
         "purpose": row.purpose,
         "amount": float(row.amount),
+        "paid_amount": float(row.paid_amount or 0),
+        "balance": float(max(row.amount - (row.paid_amount or 0), 0)),
         "due_date": due.isoformat() if due else None,
         "expected_date": row.expected_date.isoformat() if row.expected_date else None,
         "paid_date": row.paid_date.isoformat() if row.paid_date else None,
@@ -200,6 +207,7 @@ def _serialize_task(db: Session, row: Task) -> dict:
         "title": row.title,
         "notes": row.notes,
         "due_date": row.due_date.isoformat() if row.due_date else None,
+        "due_time": row.due_time,
         "priority": row.priority,
         "is_done": row.is_done,
         "done_at": row.done_at.isoformat() if row.done_at else None,
@@ -233,15 +241,43 @@ def _apply_section_filters(query, section, client_id, status, return_type, date_
         query = query.filter(_model_client_column(section) == client_id)
 
     if section in STATUS_SECTIONS and status:
-        if section == "tasks":
-            if status == "Done":
-                query = query.filter(Task.is_done == true())
+        if status not in STATUS_VALUES[section]:
+            raise HTTPException(status_code=400, detail=f"Unsupported status: {status}")
+        today = date.today()
+        if section == "filings":
+            if status == "Filed":
+                query = query.filter(Filing.status == "Filed")
             elif status == "Pending":
-                query = query.filter(Task.is_done != true())
-            elif status == "Overdue":
-                query = query.filter(Task.is_done != true(), Task.due_date < date.today())
+                query = query.filter(Filing.status != "Filed")
+            else:
+                query = query.filter(
+                    Filing.status != "Filed",
+                    Filing.due_date.isnot(None),
+                    Filing.due_date < today,
+                )
+        elif section == "fees":
+            if status == "Paid":
+                query = query.filter(Fee.status == "Paid")
+            elif status == "Partial":
+                query = query.filter(Fee.status == "Partial")
+            elif status == "Pending":
+                query = query.filter(Fee.status == "Pending")
+            else:
+                query = query.filter(
+                    Fee.status != "Paid",
+                    Fee.due_date.isnot(None),
+                    Fee.due_date < today,
+                )
+        elif status == "Done":
+            query = query.filter(Task.is_done == true())
+        elif status == "Pending":
+            query = query.filter(Task.is_done != true())
         else:
-            query = query.filter(_model_status_column(section) == status)
+            query = query.filter(
+                Task.is_done != true(),
+                Task.due_date.isnot(None),
+                Task.due_date < today,
+            )
 
     if section == "filings" and return_type:
         query = query.filter(Filing.return_type == return_type)
@@ -252,7 +288,10 @@ def _apply_section_filters(query, section, client_id, status, return_type, date_
         if from_date:
             conditions.append(column >= from_date)
         if to_date:
-            conditions.append(column <= to_date)
+            if section == "documents":
+                conditions.append(func.date(column) <= to_date)
+            else:
+                conditions.append(column <= to_date)
         if conditions:
             query = query.filter(and_(*conditions))
 
@@ -355,9 +394,9 @@ def _summary_counts(db, client_id):
 
     today = date.today()
     pending_filings = [f for f in filings if f.status != "Filed"]
-    overdue_filings = [f for f in pending_filings if f.due_date < today]
+    overdue_filings = [f for f in pending_filings if f.due_date and f.due_date < today]
     pending_fees = [f for f in fees if f.status != "Paid"]
-    overdue_fees = [f for f in pending_fees if f.due_date < today]
+    overdue_fees = [f for f in pending_fees if f.due_date and f.due_date < today]
     paid_fees = [f for f in fees if f.status == "Paid"]
 
     return {
@@ -377,8 +416,8 @@ def _summary_counts(db, client_id):
             "pending": len(pending_fees),
             "overdue": len(overdue_fees),
             "paid": len(paid_fees),
-            "received": float(sum(f.amount for f in paid_fees)),
-            "outstanding": float(sum(f.amount for f in pending_fees)),
+            "received": float(sum(f.paid_amount or 0 for f in fees)),
+            "outstanding": float(sum(f.amount - (f.paid_amount or 0) for f in pending_fees)),
         },
         "documents": len(documents),
     }
@@ -403,6 +442,12 @@ def reports(
 
     if format not in {"json", "csv"}:
         raise HTTPException(status_code=400, detail="Invalid format")
+
+    if status and status not in STATUS_VALUES.get(section, set()):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Status '{status}' is not supported for the {section} section",
+        )
 
     if section == "summary":
         data = _summary_counts(db, client_id)

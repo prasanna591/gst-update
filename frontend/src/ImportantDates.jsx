@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import {
   Plus, Pencil, Trash2, X, Cake, Building2, Sparkles, AlarmClock, Bell,
   CalendarDays, CalendarClock, CalendarRange, Search,
@@ -31,9 +32,11 @@ function when(days) {
 }
 
 export default function ImportantDates() {
+  const [searchParams] = useSearchParams();
+  const requestedRange = searchParams.get("range");
   const [items, setItems] = useState([]);
   const [clients, setClients] = useState([]);
-  const [tab, setTab] = useState("30");
+  const [tab, setTab] = useState(requestedRange === "14" ? "14" : requestedRange === "all" ? "All" : "30");
   const [search, setSearch] = useState("");
   const [form, setForm] = useState(null);
   const [editId, setEditId] = useState(null);
@@ -51,11 +54,12 @@ export default function ImportantDates() {
 
   const todayN = items.filter((i) => i.days === 0).length;
   const weekN = items.filter((i) => i.days >= 0 && i.days <= 7).length;
+  const fourteenN = items.filter((i) => i.days >= 0 && i.days <= 14).length;
   const monthN = items.filter((i) => i.days >= 0 && i.days <= 30).length;
 
   const q = search.toLowerCase();
   const shown = items
-    .filter((i) => tab === "All" || (i.days >= 0 && i.days <= 30))
+    .filter((i) => tab === "All" || (tab === "14" ? i.days >= 0 && i.days <= 14 : i.days >= 0 && i.days <= 30))
     .filter((i) => [i.title, i.kind, i.client_name].some((v) => (v || "").toLowerCase().includes(q)));
 
   const cards = [
@@ -121,6 +125,7 @@ export default function ImportantDates() {
       <section className="panel">
         <div className="panel-tools">
           <div className="tabs">
+            <button className={tab === "14" ? "on" : ""} onClick={() => setTab("14")}>Next 14 days ({fourteenN})</button>
             <button className={tab === "30" ? "on" : ""} onClick={() => setTab("30")}>Next 30 days ({monthN})</button>
             <button className={tab === "All" ? "on" : ""} onClick={() => setTab("All")}>All dates ({items.length})</button>
           </div>

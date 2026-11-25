@@ -7,6 +7,7 @@ from types import SimpleNamespace
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_user, get_db, require_admin
@@ -43,6 +44,11 @@ DEFAULT_CONFIG = {
 class TemplateIn(BaseModel):
     name: str = Field(min_length=1, max_length=100)
     config: dict
+
+
+class InvoiceUpdate(BaseModel):
+    status: str | None = Field(default=None, max_length=10)
+    notes: str | None = None
 
 
 def _safe_color(value) -> str:
@@ -99,6 +105,25 @@ def _template_out(row: InvoiceTemplate) -> dict:
         "is_default": bool(row.is_default),
         "created_at": row.created_at.isoformat() if row.created_at else None,
         "updated_at": row.updated_at.isoformat() if row.updated_at else None,
+    }
+
+
+def invoice_out(invoice: Invoice, client: Client | None = None, fee: Fee | None = None) -> dict:
+    return {
+        "id": invoice.id,
+        "invoice_no": invoice.invoice_no,
+        "fee_id": invoice.fee_id,
+        "client_id": invoice.client_id,
+        "client_name": client.client_name if client else None,
+        "business_name": client.business_name if client else None,
+        "email": client.email if client else None,
+        "purpose": invoice.purpose,
+        "amount": float(invoice.amount),
+        "issued_date": invoice.issued_date,
+        "due_date": fee.due_date if fee else None,
+        "status": invoice.status,
+        "notes": invoice.notes,
+        "created_at": invoice.created_at.isoformat() if invoice.created_at else None,
     }
 
 
@@ -375,6 +400,73 @@ def delete_template(
         raise HTTPException(status_code=404, detail="Invoice template not found")
     db.delete(row)
     db.commit()
+
+
+@router.get("/")
+def list_invoices(
+    client_id: int | None = None,
+    status: str | None = None,
+    from_date: date | None = None,
+    to_date: date | None = None,
+    search: str | None = None,
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    query = (
+        db.query(Invoice, Client, Fee)
+        .outerjoin(Client, Client.id == Invoice.client_id)
+        .outerjoin(Fee, Fee.id == Invoice.fee_id)
+    )
+    if client_id:
+        query = query.filter(Invoice.client_id == client_id)
+    if status:
+        query = query.filter(Invoice.status == status.strip())
+    if from_date:
+        query = query.filter(Invoice.issued_date >= from_date)
+    if to_date:
+        query = query.filter(Invoice.issued_date <= to_date)
+    if search and search.strip():
+        term = f"%{search.strip()}%"
+        query = query.filter(
+            or_(
+                Invoice.invoice_no.ilike(term),
+                Invoice.purpose.ilike(term),
+                Client.client_name.ilike(term),
+                Client.business_name.ilike(term),
+            )
+        )
+    rows = query.order_by(Invoice.issued_date.desc(), Invoice.id.desc()).all()
+    return [invoice_out(invoice, client, fee) for invoice, client, fee in rows]
+
+
+@router.get("/{invoice_id}")
+def get_invoice(
+    invoice_id: int,
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    invoice, client, fee = _invoice_data(db, invoice_id)
+    return invoice_out(invoice, client, fee)
+
+
+@router.patch("/{invoice_id}")
+def update_invoice(
+    invoice_id: int,
+    payload: InvoiceUpdate,
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    invoice, client, fee = _invoice_data(db, invoice_id)
+    if payload.status is not None:
+        status = payload.status.strip()
+        if status not in {"Draft", "Issued", "Paid", "Cancelled"}:
+            raise HTTPException(status_code=422, detail="Unsupported invoice status")
+        invoice.status = status
+    if payload.notes is not None:
+        invoice.notes = payload.notes.strip() or None
+    db.commit()
+    db.refresh(invoice)
+    return invoice_out(invoice, client, fee)
 
 
 @router.get("/{invoice_id}/html", response_class=HTMLResponse)

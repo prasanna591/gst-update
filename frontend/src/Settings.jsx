@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Eye, EyeOff, CheckCircle2, AlertCircle, Cloud, CloudOff, CloudUpload, RefreshCw, ShieldCheck, FileText, Save, Trash2, Star, BellRing } from "lucide-react";
+import { Eye, EyeOff, CheckCircle2, AlertCircle, Cloud, CloudOff, CloudUpload, RefreshCw, ShieldCheck, FileText, Save, Trash2, Star, BellRing, Monitor, Volume2, RotateCcw, Send } from "lucide-react";
 import api from "./api";
 import { useAuth } from "./authContext";
+import { loadNotificationPrefs, resetNotificationPrefs, saveNotificationPrefs } from "./notificationPrefs";
 
 export default function SettingsPage() {
   const { user, logout } = useAuth();
@@ -130,6 +131,8 @@ export default function SettingsPage() {
         </form>
       </section>
 
+      <AlertPreferencesSection notify={notify} userId={user?.id} />
+
       {user?.role === "Admin" && (
         <>
           <div className="settings-section-label">Administrator</div>
@@ -148,6 +151,119 @@ export default function SettingsPage() {
         </div>
       )}
     </div>
+  );
+}
+
+function AlertPreferencesSection({ notify, userId }) {
+  const [prefs, setPrefs] = useState(() => loadNotificationPrefs(userId));
+  const [permission, setPermission] = useState(
+    typeof Notification === "undefined" ? "unsupported" : Notification.permission
+  );
+
+  useEffect(() => {
+    setPrefs(loadNotificationPrefs(userId));
+  }, [userId]);
+
+  useEffect(() => {
+    const reload = (event) => setPrefs(event.detail || loadNotificationPrefs(userId));
+    window.addEventListener("gst:notification-prefs-changed", reload);
+    return () => window.removeEventListener("gst:notification-prefs-changed", reload);
+  }, [userId]);
+
+  function update(key, value) {
+    const next = { ...prefs, [key]: value };
+    setPrefs(next);
+    saveNotificationPrefs(userId, next);
+  }
+
+  async function enableDesktop() {
+    try {
+      if (window.gstApi?.desktopNotify) {
+        await window.gstApi.desktopNotify({ title: "GST Office", body: "Desktop notifications are on.", link: "/" });
+      } else if (typeof Notification !== "undefined") {
+        const result = await Notification.requestPermission();
+        if (result !== "granted") {
+          notify("error", "Desktop notification permission was not granted.");
+          setPermission(result);
+          return;
+        }
+      }
+      setPermission("granted");
+      notify("success", "Desktop notifications are enabled.");
+    } catch {
+      notify("error", "Desktop notifications could not be enabled.");
+    }
+  }
+
+  function sendTest() {
+    window.dispatchEvent(new CustomEvent("gst:test-notification", {
+      detail: {
+        id: `test-${Date.now()}`,
+        title: "GST Office",
+        body: "Test notification received. Your alerts are working.",
+        kind: "Test",
+        link: "/",
+      },
+    }));
+    notify("success", "Test notification sent.");
+  }
+
+  function restoreDefaults() {
+    setPrefs(resetNotificationPrefs(userId));
+    notify("success", "Notification preferences restored to defaults.");
+  }
+
+  return (
+    <section className="panel">
+      <div className="panel-heading">
+        <div>
+          <h2><BellRing size={17} /> Alert preferences</h2>
+          <p>Choose how new notifications reach you. These settings apply to this device.</p>
+        </div>
+      </div>
+      <div className="form-grid settings-form">
+        <label className="checkbox-field">
+          <input type="checkbox" checked={prefs.popup} onChange={(event) => update("popup", event.target.checked)} />
+          <span><strong>Pop-up alerts</strong><small>Show a notification card when something new arrives.</small></span>
+        </label>
+        <label className="checkbox-field">
+          <input type="checkbox" checked={prefs.sound} onChange={(event) => update("sound", event.target.checked)} />
+          <span><strong>Sound</strong><small>Play a short chime for new alerts.</small></span>
+        </label>
+        <label className="checkbox-field">
+          <input type="checkbox" checked={prefs.desktop} onChange={(event) => update("desktop", event.target.checked)} />
+          <span><strong>Desktop notifications</strong><small>Send alerts to Windows even when another tab is active.</small></span>
+        </label>
+        <label className="checkbox-field">
+          <input type="checkbox" checked={prefs.quietHours} onChange={(event) => update("quietHours", event.target.checked)} />
+          <span><strong>Quiet hours</strong><small>Pause pop-ups, sound, and desktop alerts during the selected window.</small></span>
+        </label>
+        <div className="template-fields">
+          <label>
+            Quiet from
+            <input type="time" value={prefs.quietFrom} onChange={(event) => update("quietFrom", event.target.value)} disabled={!prefs.quietHours} />
+          </label>
+          <label>
+            Quiet until
+            <input type="time" value={prefs.quietTo} onChange={(event) => update("quietTo", event.target.value)} disabled={!prefs.quietHours} />
+          </label>
+        </div>
+        <label>
+          Maximum pop-ups on screen
+          <select value={prefs.maxPopups} onChange={(event) => update("maxPopups", Number(event.target.value))}>
+            {[1, 2, 3, 4, 5].map((count) => <option key={count} value={count}>{count}</option>)}
+          </select>
+        </label>
+      </div>
+      <div className="template-actions">
+        <button className="primary-btn" onClick={sendTest}><Send size={15} /> Send test notification</button>
+        {permission !== "granted" && permission !== "unsupported" && prefs.desktop && (
+          <button className="secondary-btn" onClick={enableDesktop}><Monitor size={15} /> Enable desktop alerts</button>
+        )}
+        {prefs.desktop && <span className="settings-hint"><Volume2 size={14} /> Desktop alerts {permission === "granted" ? "ready" : "available"}</span>}
+        <button className="text-btn" onClick={restoreDefaults}><RotateCcw size={14} /> Restore defaults</button>
+      </div>
+    </section>
   );
 }
 
@@ -658,6 +774,7 @@ function NotificationRulesSection({ notify }) {
         enabled: !!rule.enabled,
         include_overdue: !!rule.include_overdue,
         link: rule.link,
+        notify_time: rule.notify_time || "09:00",
       });
       setRules((prev) => prev.map((item) => item.kind === rule.kind ? result.data : item));
       notify("success", `${rule.label} reminders updated.`);
@@ -690,7 +807,7 @@ function NotificationRulesSection({ notify }) {
         <div className="gd-logo"><BellRing size={22} /></div>
         <div>
           <h2>Reminder rules</h2>
-          <p>Choose which reminders appear, how early they start, and where they link.</p>
+          <p>Choose when reminders appear, how early they start, and where they link.</p>
         </div>
         <button className="secondary-btn" onClick={reset} disabled={busy}>Restore defaults</button>
       </div>
@@ -720,6 +837,11 @@ function NotificationRulesSection({ notify }) {
               Days ahead
               <input type="number" min="0" max="365" value={rule.lead_days}
                 onChange={(e) => change(index, "lead_days", e.target.value)} />
+            </label>
+            <label>
+              Notify at
+              <input type="time" value={rule.notify_time || "09:00"}
+                onChange={(e) => change(index, "notify_time", e.target.value)} />
             </label>
             <label className="checkbox-field">
               <input type="checkbox" checked={!!rule.enabled}

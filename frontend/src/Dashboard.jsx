@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   Users, UserCheck, Clock, AlertTriangle, CheckCircle2, CalendarDays,
-  ListChecks, IndianRupee, Gift, Star,
+  ListChecks, IndianRupee, Gift, Star, ArrowUpRight,
 } from "lucide-react";
 import api from "./api";
 import { useAuth } from "./authContext";
@@ -120,12 +120,13 @@ export default function Dashboard() {
   const todayTasks = tasks
     .filter((t) => !t.is_done && t.due_date <= today)
     .sort((a, b) => (a.priority === "High" ? 0 : 1) - (b.priority === "High" ? 0 : 1)
-      || a.due_date.localeCompare(b.due_date));
+      || a.due_date.localeCompare(b.due_date)
+      || (a.due_time || "").localeCompare(b.due_time || ""));
   const pendingFees = fees
-    .filter((f) => f.status === "Pending")
+    .filter((f) => f.status !== "Paid")
     .sort((a, b) => a.due_date.localeCompare(b.due_date));
   const overdueFees = pendingFees.filter((f) => f.due_date < today);
-  const feeTotal = pendingFees.reduce((s, f) => s + f.amount, 0);
+  const feeTotal = pendingFees.reduce((s, f) => s + (f.balance ?? f.amount), 0);
   const soonDates = dates.filter((d) => d.days >= 0 && d.days <= 14);
 
   async function tickTask(t) {
@@ -138,10 +139,10 @@ export default function Dashboard() {
   }
 
   const dayCards = [
-    { label: "Tasks for today", value: todayTasks.length, note: todayTasks.length ? "Tick them off below" : "All clear", icon: ListChecks, tone: "blue", card: "" },
-    { label: "Pending fees", value: inr(feeTotal), note: `${pendingFees.length} payment${pendingFees.length === 1 ? "" : "s"} to collect`, icon: IndianRupee, tone: "orange", card: "c-gold" },
-    { label: "Overdue fees", value: overdueFees.length, note: "Past the due date", icon: AlertTriangle, tone: "red", card: "c-red" },
-    { label: "Dates in 14 days", value: soonDates.length, note: "Birthdays and reminders", icon: Gift, tone: "violet", card: "c-violet" },
+    { label: "Tasks for today", value: todayTasks.length, note: todayTasks.length ? "Tick them off below" : "All clear", icon: ListChecks, tone: "blue", card: "", to: "/tasks?view=today" },
+    { label: "Pending fees", value: inr(feeTotal), note: `${pendingFees.length} payment${pendingFees.length === 1 ? "" : "s"} to collect`, icon: IndianRupee, tone: "orange", card: "c-gold", to: "/fees?status=Pending" },
+    { label: "Overdue fees", value: overdueFees.length, note: "Past the due date", icon: AlertTriangle, tone: "red", card: "c-red", to: "/fees?status=Overdue" },
+    { label: "Dates in 14 days", value: soonDates.length, note: "Birthdays and reminders", icon: Gift, tone: "violet", card: "c-violet", to: "/dates?range=14" },
   ];
 
   const workloadRows = [
@@ -164,10 +165,10 @@ export default function Dashboard() {
   const maxOpen = Math.max(1, ...workloadRows.map((r) => r.open));
 
   const statCards = [
-    { label: "Total clients", value: clients.length, note: `${activeClients} active`, icon: Users, tone: "blue", card: "" },
-    { label: "Pending filings", value: pendingCount, note: "Not yet due or due soon", icon: Clock, tone: "orange", card: "c-gold" },
-    { label: "Overdue filings", value: overdue.length, note: "Need action now", icon: AlertTriangle, tone: "red", card: "c-red" },
-    { label: "Filed", value: filedCount, note: "Completed returns", icon: CheckCircle2, tone: "green", card: "c-green" },
+    { label: "Total clients", value: clients.length, note: `${activeClients} active`, icon: Users, tone: "blue", card: "", to: "/clients" },
+    { label: "Pending filings", value: pendingCount, note: "Not yet due or due soon", icon: Clock, tone: "orange", card: "c-gold", to: "/filings?status=Pending" },
+    { label: "Overdue filings", value: overdue.length, note: "Need action now", icon: AlertTriangle, tone: "red", card: "c-red", to: "/filings?status=Overdue" },
+    { label: "Filed", value: filedCount, note: "Completed returns", icon: CheckCircle2, tone: "green", card: "c-green", to: "/filings?status=Filed" },
   ];
 
   return (
@@ -198,28 +199,34 @@ export default function Dashboard() {
       )}
 
       <section className="stats-grid">
-        {statCards.map(({ label, value, note, icon: Icon, tone, card }) => (
-          <article className={`stat-card ${card}`} key={label}>
+        {statCards.map(({ label, value, note, icon: Icon, tone, card, to }) => (
+          <Link className={`stat-card stat-card-link ${card}`} to={to} key={label} aria-label={`Open ${label.toLowerCase()}`}>
             <div className="stat-top">
               <span>{label}</span>
-              <div className={`stat-icon ${tone}`}><Icon /></div>
+              <div className="stat-top-actions">
+                <ArrowUpRight className="stat-arrow" size={14} />
+                <div className={`stat-icon ${tone}`}><Icon /></div>
+              </div>
             </div>
             <strong>{loading ? "…" : value}</strong>
             <small>{note}</small>
-          </article>
+          </Link>
         ))}
       </section>
 
       <section className="stats-grid">
-        {dayCards.map(({ label, value, note, icon: Icon, tone, card }) => (
-          <article className={`stat-card ${card}`} key={label}>
+        {dayCards.map(({ label, value, note, icon: Icon, tone, card, to }) => (
+          <Link className={`stat-card stat-card-link ${card}`} to={to} key={label} aria-label={`Open ${label.toLowerCase()}`}>
             <div className="stat-top">
               <span>{label}</span>
-              <div className={`stat-icon ${tone}`}><Icon /></div>
+              <div className="stat-top-actions">
+                <ArrowUpRight className="stat-arrow" size={14} />
+                <div className={`stat-icon ${tone}`}><Icon /></div>
+              </div>
             </div>
             <strong>{loading ? "…" : value}</strong>
             <small>{note}</small>
-          </article>
+          </Link>
         ))}
       </section>
 
@@ -241,7 +248,7 @@ export default function Dashboard() {
                   <input type="checkbox" className="dx-check" title="Mark as done" onChange={() => tickTask(t)} />
                   <div className="dx-body">
                     <strong>{t.title}</strong>
-                    <small>{t.client_name || "General"}{t.due_date < today ? ` · ${-daysFromToday(t.due_date)} day(s) overdue` : " · Today"}</small>
+                    <small>{t.client_name || "General"}{t.due_time ? ` · ${t.due_time}` : ""}{t.due_date < today ? ` · ${-daysFromToday(t.due_date)} day(s) overdue` : " · Today"}</small>
                   </div>
                   {t.priority === "High" && <span className="chip chip-amber"><Star size={11} /> Important</span>}
                 </li>

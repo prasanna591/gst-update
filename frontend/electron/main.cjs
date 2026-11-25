@@ -1,4 +1,4 @@
-const { app, BrowserWindow, dialog, ipcMain, Notification } = require("electron");
+const { app, BrowserWindow, dialog, ipcMain, Notification, shell } = require("electron");
 const path = require("path");
 const { spawn } = require("child_process");
 const http = require("http");
@@ -22,16 +22,26 @@ const BACKEND = isDev
       cwd: path.join(process.resourcesPath, "backend"),
     };
 
-ipcMain.on("desktop-notify", (event, { title, body } = {}) => {
-  if (!Notification || !Notification.isSupported()) return;
+ipcMain.handle("desktop-notify", async (event, payload = {}) => {
+  if (!Notification || !Notification.isSupported()) return false;
   try {
     const note = new Notification({
-      title: title || "GST Client Management System",
-      body: body || "",
+      title: payload.title || "GST Client Management System",
+      body: payload.body || "",
+      silent: Boolean(payload.silent),
+    });
+    note.on("click", () => {
+      if (mainWindow) {
+        if (mainWindow.isMinimized()) mainWindow.restore();
+        mainWindow.focus();
+      }
+      if (payload.link) event.sender.send("notification-click", payload.link);
     });
     note.show();
+    return true;
   } catch (error) {
     console.error("Desktop notification failed:", error);
+    return false;
   }
 });
 
@@ -139,6 +149,34 @@ async function createWindow() {
       nodeIntegration: false,
       preload: path.join(__dirname, "preload.js"),
     },
+  });
+
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    let parsed;
+    try {
+      parsed = new URL(url);
+    } catch (error) {
+      return { action: "deny" };
+    }
+
+    if (parsed.protocol === "http:" || parsed.protocol === "https:") {
+      if (parsed.hostname === "127.0.0.1" || parsed.hostname === "localhost") {
+        return { action: "allow" };
+      }
+      dialog.showMessageBox(mainWindow, {
+        type: "question",
+        title: "Open external link",
+        message: "Open this link in your browser?",
+        detail: url,
+        buttons: ["Open", "Cancel"],
+        defaultId: 1,
+        cancelId: 1,
+      }).then(({ response }) => {
+        if (response === 0) shell.openExternal(url);
+      }).catch((error) => console.error("Could not open external link:", error));
+    }
+
+    return { action: "deny" };
   });
 
   if (isDev) {

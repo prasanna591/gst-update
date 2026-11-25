@@ -25,7 +25,7 @@ export default function NavBadge({ kind }) {
         } else {
           const res = await api.get("/api/fees/");
           const overdue = res.data.filter(
-            (f) => f.status === "Pending" && f.due_date < today
+            (f) => f.status !== "Paid" && f.due_date < today
           );
           if (!cancelled) {
             setCount(overdue.length);

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import {
   Plus, Pencil, Trash2, X, RefreshCw, CheckCircle2, AlertCircle,
   ListChecks, Clock, AlertTriangle, CalendarDays,
@@ -76,10 +77,14 @@ const BADGE = {
 
 export default function Filings() {
   const { user } = useAuth();
+  const [searchParams] = useSearchParams();
+  const requestedStatus = searchParams.get("status");
   const [filings, setFilings] = useState([]);
   const [clients, setClients] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [statusFilter, setStatusFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState(
+    ["Pending", "Overdue", "Filed"].includes(requestedStatus) ? requestedStatus : "all"
+  );
   const [typeFilter, setTypeFilter] = useState("all");
   const [clientFilter, setClientFilter] = useState("all");
   const [periodFilter, setPeriodFilter] = useState("");

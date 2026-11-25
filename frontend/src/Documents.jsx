@@ -4,7 +4,7 @@ import {
   AlertCircle, AlertTriangle, FileText, FileImage, FileSpreadsheet,
   File as FileIcon, UploadCloud, Upload, HardDrive,
 } from "lucide-react";
-import api from "./api";
+import api, { apiErrorMessage } from "./api";
 import DetailCard from "./DetailCard";
 import { useAuth } from "./authContext";
 
@@ -82,38 +82,50 @@ export default function Documents() {
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState(null);
   const [detail, setDetail] = useState(null);
+  const [preview, setPreview] = useState(null);
+  const previewUrl = useRef(null);
 
   const notify = useCallback((type, message) => {
     setToast({ type, message });
     setTimeout(() => setToast(null), 3500);
   }, []);
 
-  function errorText(err, fallback) {
-    const detail = err.response?.data?.detail;
-    return typeof detail === "string" ? detail : fallback;
-  }
-
   const loadData = useCallback(async () => {
     setLoading(true);
+    const errors = [];
+
     try {
-      const [d, c, f] = await Promise.all([
-        api.get("/api/documents/"),
-        api.get("/api/clients/"),
-        api.get("/api/filings/"),
-      ]);
-      setDocs(d.data);
-      setClients(c.data);
-      setFilings(f.data);
-    } catch {
-      notify("error", "Unable to load documents. Check that the backend is running.");
-    } finally {
-      setLoading(false);
+      const res = await api.get("/api/documents/");
+      setDocs(res.data);
+    } catch (err) {
+      errors.push(`Documents: ${await apiErrorMessage(err, "Could not load documents.")}`);
     }
+
+    try {
+      const res = await api.get("/api/clients/");
+      setClients(res.data);
+    } catch (err) {
+      errors.push(`Clients: ${await apiErrorMessage(err, "Could not load clients.")}`);
+    }
+
+    try {
+      const res = await api.get("/api/filings/");
+      setFilings(res.data);
+    } catch (err) {
+      errors.push(`Filings: ${await apiErrorMessage(err, "Could not load filings.")}`);
+    }
+
+    if (errors.length) notify("error", errors.join(" · "));
+    setLoading(false);
   }, [notify]);
 
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  useEffect(() => () => {
+    if (previewUrl.current) URL.revokeObjectURL(previewUrl.current);
+  }, []);
 
   const clientById = (id) => clients.find((c) => c.id === id);
   const filingById = (id) => filings.find((f) => f.id === id);
@@ -157,7 +169,7 @@ export default function Documents() {
       setShowForm(false);
       await loadData();
     } catch (err) {
-      notify("error", errorText(err, "Could not upload the document."));
+      notify("error", `Could not upload the document: ${await apiErrorMessage(err, "Please try again.")}`);
     } finally {
       setSaving(false);
     }
@@ -170,39 +182,54 @@ export default function Documents() {
     return res.data;
   }
 
-  async function download(doc) {
+  async function download(doc, successMessage) {
+    let url;
+    let anchor;
     try {
       const blob = await fetchBlob(doc);
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = doc.original_filename;
-      a.click();
-      setTimeout(() => URL.revokeObjectURL(url), 10000);
-    } catch {
-      notify("error", "Could not download the document.");
+      url = URL.createObjectURL(blob);
+      anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = doc.original_filename || "document";
+      document.body.appendChild(anchor);
+      anchor.click();
+      notify(
+        "success",
+        successMessage || `Downloaded "${doc.title || doc.original_filename}".`
+      );
+    } catch (err) {
+      notify(
+        "error",
+        `Could not download the document: ${await apiErrorMessage(err, "Please try again.")}`
+      );
+    } finally {
+      anchor?.remove();
+      if (url) setTimeout(() => URL.revokeObjectURL(url), 10000);
     }
   }
 
   async function view(doc) {
     const ext = extOf(doc.original_filename);
     if (![".pdf", ".jpg", ".jpeg", ".png"].includes(ext)) {
-      notify("success", "This file type cannot be previewed, so it is downloading.");
-      return download(doc);
+      return download(doc, "This file type cannot be previewed, so it is downloading.");
     }
-    const tab = window.open("", "_blank");
     try {
       const blob = await fetchBlob(doc);
-      const typed = new Blob([blob], {
-        type: ext === ".pdf" ? "application/pdf" : ext === ".png" ? "image/png" : "image/jpeg",
-      });
-      const url = URL.createObjectURL(typed);
-      if (tab) tab.location.href = url;
-      setTimeout(() => URL.revokeObjectURL(url), 60000);
-    } catch {
-      if (tab) tab.close();
-      notify("error", "Could not open the document.");
+      const mime = ext === ".pdf"
+        ? "application/pdf"
+        : ext === ".png" ? "image/png" : "image/jpeg";
+      const typed = new Blob([blob], { type: mime });
+      previewUrl.current = URL.createObjectURL(typed);
+      setPreview({ doc, url: previewUrl.current, isPdf: ext === ".pdf" });
+    } catch (err) {
+      notify("error", `Could not open the document: ${await apiErrorMessage(err, "Please try again.")}`);
     }
+  }
+
+  function closePreview() {
+    if (previewUrl.current) URL.revokeObjectURL(previewUrl.current);
+    previewUrl.current = null;
+    setPreview(null);
   }
 
   async function remove(doc) {
@@ -212,7 +239,7 @@ export default function Documents() {
       notify("success", "Document deleted.");
       await loadData();
     } catch (err) {
-      notify("error", errorText(err, "Could not delete the document."));
+      notify("error", `Could not delete the document: ${await apiErrorMessage(err, "Please try again.")}`);
     }
   }
 
@@ -506,6 +533,41 @@ export default function Documents() {
                 </button>
               </div>
             </form>
+          </section>
+        </div>
+      )}
+
+      {preview && (
+        <div className="modal-backdrop" onClick={closePreview}>
+          <section className="modal" onClick={(e) => e.stopPropagation()} style={{ width: "min(1100px, 94vw)" }}>
+            <div className="modal-heading">
+              <div>
+                <h2>{preview.doc.title || preview.doc.original_filename}</h2>
+                <p>{preview.doc.original_filename}</p>
+              </div>
+              <button className="icon-btn" onClick={closePreview} title="Close"><X /></button>
+            </div>
+            <div style={{ width: "100%", height: "65vh", background: "#f3f4f6" }}>
+              {preview.isPdf ? (
+                <iframe
+                  src={preview.url}
+                  title="Document preview"
+                  style={{ width: "100%", height: "100%", border: 0 }}
+                />
+              ) : (
+                <img
+                  src={preview.url}
+                  alt="Document preview"
+                  style={{ width: "100%", height: "100%", objectFit: "contain" }}
+                />
+              )}
+            </div>
+            <div className="modal-actions">
+              <button type="button" className="secondary-btn" onClick={closePreview}>Close</button>
+              <button type="button" className="primary-btn" onClick={() => download(preview.doc)}>
+                <Download size={16} /> Download
+              </button>
+            </div>
           </section>
         </div>
       )}
